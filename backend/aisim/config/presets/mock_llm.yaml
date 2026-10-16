@@ -1,0 +1,4 @@
+name: Mock LLM
+description: All agents go through the full LLM decision pipeline using an offline mock provider (no API cost).
+llm:
+  provider: mock
