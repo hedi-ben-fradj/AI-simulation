@@ -65,6 +65,11 @@ export const api = {
     request<Message[]>(`/api/worlds/${id}/messages${agent ? `?agent=${agent}` : ''}`),
   decisions: (id: string, agent?: string, limit = 100) =>
     request<Decision[]>(`/api/worlds/${id}/decisions?limit=${limit}${agent ? `&agent=${agent}` : ''}`),
+  relationships: (id: string) => request<{ agent_id: string; other_id: string; trust: number; familiarity: number; affinity: number }[]>(
+    `/api/worlds/${id}/relationships`),
+  trustChanges: (id: string, agent?: string) =>
+    request<{ tick: number; agent_id: string; other_id: string; reason: string; positive: boolean; trust_before: number; trust_after: number }[]>(
+      `/api/worlds/${id}/trust${agent ? `?agent=${agent}` : ''}`),
   metrics: (id: string, every = 1) => request<Metrics[]>(`/api/worlds/${id}/metrics?every=${every}`),
   llm: (id: string) => request<{ live: Record<string, any>; summary: Record<string, any>; recent: any[] }>(
     `/api/worlds/${id}/llm`),

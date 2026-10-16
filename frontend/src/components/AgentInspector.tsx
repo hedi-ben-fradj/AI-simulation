@@ -30,6 +30,7 @@ function Meter({ label, value, max = 100, color, invert = false }: { label: stri
 export function AgentInspector({ worldId, agentId, tick, agentNames }: Props) {
   const [agent, setAgent] = useState<AgentDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [trustLog, setTrustLog] = useState<Awaited<ReturnType<typeof api.trustChanges>>>([]);
   const lastFetch = useRef(0);
 
   useEffect(() => {
@@ -43,6 +44,7 @@ export function AgentInspector({ worldId, agentId, tick, agentNames }: Props) {
     const t = setTimeout(() => {
       lastFetch.current = performance.now();
       api.agent(worldId, agentId).then((a) => { setAgent(a); setError(null); }).catch((e) => setError(String(e)));
+      api.trustChanges(worldId, agentId).then(setTrustLog).catch(() => undefined);
     }, wait);
     return () => clearTimeout(t);
   }, [worldId, agentId, tick]);
@@ -193,6 +195,20 @@ export function AgentInspector({ worldId, agentId, tick, agentNames }: Props) {
             </Table.Tbody>
           </Table>
           {agent.relationships.length === 0 && <Text size="sm" c="dimmed">Has not met anyone yet.</Text>}
+          {trustLog.length > 0 && (
+            <>
+              <Text size="xs" fw={600} mt="xs">Trust evidence (latest first)</Text>
+              <ScrollArea.Autosize mah={160}>
+                {trustLog.slice().reverse().slice(0, 30).map((t, i) => (
+                  <Text key={i} size="xs">
+                    <Text span c="dimmed" size="xs">t{t.tick} </Text>
+                    {name(t.agent_id)} → {name(t.other_id)}: {t.reason.replace(/_/g, ' ')}{' '}
+                    <Text span size="xs" c={t.positive ? 'teal' : 'red'}>{t.trust_before.toFixed(2)} → {t.trust_after.toFixed(2)}</Text>
+                  </Text>
+                ))}
+              </ScrollArea.Autosize>
+            </>
+          )}
           {agent.pending_offers.length > 0 && (
             <Text size="xs" mt="xs">Pending offers: {agent.pending_offers.length}</Text>
           )}

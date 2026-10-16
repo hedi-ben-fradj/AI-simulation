@@ -24,6 +24,40 @@ def _m(values: list[float]) -> float:
     return round(mean(values), 4) if values else 0.0
 
 
+FRIEND_TRUST = 0.6
+HOSTILE_TRUST = 0.35
+
+
+def social_network_metrics(alive: list) -> dict[str, Any]:
+    """Network structure among living agents (directed trust, mutual ties)."""
+    ids = {a.id for a in alive}
+    by_id = {a.id: a for a in alive}
+    friendships = hostile = mutual_known = 0
+    for a in alive:
+        for oid, rel in a.relationships.items():
+            if oid not in ids or oid <= a.id:
+                continue
+            back = by_id[oid].relationships.get(a.id)
+            if back is None:
+                continue
+            mutual_known += 1
+            if rel.trust >= FRIEND_TRUST and back.trust >= FRIEND_TRUST and min(rel.familiarity, back.familiarity) >= 2:
+                friendships += 1
+            if rel.trust <= HOSTILE_TRUST or back.trust <= HOSTILE_TRUST:
+                hostile += 1
+    n = len(alive)
+    interacted = [(a, r) for a in alive for oid, r in a.relationships.items() if oid in ids and r.familiarity > 0]
+    possible = n * (n - 1)
+    isolated = sum(1 for a in alive if not any(r.familiarity > 0 for oid, r in a.relationships.items() if oid in ids))
+    return {
+        "friendships": friendships,
+        "hostile_pairs": hostile,
+        "known_pairs": mutual_known,
+        "network_density": round(len(interacted) / possible, 4) if possible else 0.0,
+        "isolated_agents": isolated,
+    }
+
+
 def compute_metrics(sim: "Simulation", result: "TickResult") -> dict[str, Any]:
     world = sim.world
     agents = list(world.agents.values())
@@ -35,6 +69,7 @@ def compute_metrics(sim: "Simulation", result: "TickResult") -> dict[str, Any]:
     successful_thefts = sum(1 for e in result.events if e.type == "theft" and e.data.get("success"))
     trust_values = [r.trust for a in alive for r in a.relationships.values()]
     actions = Counter(sim.executed.get(a.id, "idle") for a in alive)
+    social = social_network_metrics(alive)
     return {
         "tick": world.tick,
         "day": world.tick // sim.config.simulation.ticks_per_day + 1,
@@ -67,6 +102,7 @@ def compute_metrics(sim: "Simulation", result: "TickResult") -> dict[str, Any]:
         "thefts_successful": successful_thefts,
         "trust_mean": _m(trust_values),
         "relationships": len(trust_values),
+        **social,
         "existential_activations": sum(1 for d in result.decisions if d.existential_active),
         "existential_reflections": sum(1 for e in result.events if e.type == "reflect" and e.data.get("existential")),
         "existential_messages": sum(1 for m in result.messages if m.existential),

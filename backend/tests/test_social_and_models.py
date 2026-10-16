@@ -316,3 +316,29 @@ def test_memory_store_is_bounded():
     for i in range(30):
         s.remember(a, f"memory {i}", importance=0.1 + (i % 3) * 0.3)
     assert len(a.memories) == 10
+
+
+def test_memory_consolidation_keeps_a_summary():
+    s = make_sim({"capacity": {"max_memories_per_agent": 10}})
+    a = s.world.agents["a1"]
+    for i in range(30):
+        s.remember(a, f"memory {i}", importance=0.1 + (i % 3) * 0.3, related=["a2"] if i % 2 else [])
+    assert len(a.memories) <= 10
+    summaries = [m for m in a.memories if m.kind == "summary"]
+    assert summaries and "Older memories" in summaries[-1].content
+    assert "a2" in summaries[-1].related_agents
+
+
+def test_social_network_metrics():
+    from aisim.engine.metrics import social_network_metrics
+
+    s = make_sim()
+    a1, a2, a3 = (s.world.agents[k] for k in ("a1", "a2", "a3"))
+    for x, y in ((a1, a2), (a2, a1)):
+        rel = s.relationship(x, y)
+        rel.trust_alpha, rel.familiarity = 8, 3
+    rel = s.relationship(a3, a1)
+    rel.trust_beta = 8
+    s.relationship(a1, a3)
+    m = social_network_metrics([a1, a2, a3])
+    assert m["friendships"] == 1 and m["hostile_pairs"] == 1 and m["isolated_agents"] == 1

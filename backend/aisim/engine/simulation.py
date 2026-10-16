@@ -255,9 +255,22 @@ class Simulation:
             age_days = (now - m.tick) / tpd
             return m.importance - 0.05 * age_days
 
-        keep = sorted(agent.memories, key=value, reverse=True)[:cap]
+        keep = sorted(agent.memories, key=value, reverse=True)[: cap - 1]
         keep_ids = {m.id for m in keep}
+        dropped = [m for m in agent.memories if m.id not in keep_ids]
         agent.memories = [m for m in agent.memories if m.id in keep_ids]
+        # Fold what leaves working memory into one compact summary memory.
+        first, last = min(m.tick for m in dropped) // tpd + 1, max(m.tick for m in dropped) // tpd + 1
+        span = f"day {first}" if first == last else f"days {first}-{last}"
+        gist = "; ".join(m.content.rstrip(".") for m in sorted(dropped, key=lambda m: -m.importance)[:4])
+        related = sorted({r for m in dropped for r in m.related_agents})[:6]
+        tags = sorted({t for m in dropped for t in m.tags})[:6]
+        summary = Memory(id=self.world.next_id("m"), tick=max(m.tick for m in dropped), kind="summary",
+                         content=f"Older memories ({span}): {gist}."[:400],
+                         importance=round(min(0.9, max(m.importance for m in dropped) * 0.8), 3),
+                         related_agents=related, tags=tags + ["summary"])
+        agent.memories.append(summary)
+        self._result.memories.append((agent.id, summary))
 
     def create_trade_offer(self, sender: Agent, recipient: Agent, offer: dict[str, float],
                            request: dict[str, float], note: str | None = None) -> TradeOffer:

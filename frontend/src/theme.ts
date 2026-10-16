@@ -56,3 +56,22 @@ export const ACTION_COLORS: Record<string, string> = {
   idle: '#ced4da',
   move: '#adb5bd',
 };
+
+// Diverging trust scale: red (distrust) <- neutral gray (0.5, the prior) -> blue (trust).
+const DIVERGING = {
+  light: { low: '#e34948', mid: '#f0efec', high: '#2a78d6' },
+  dark: { low: '#e66767', mid: '#383835', high: '#3987e5' },
+};
+
+function mix(a: string, b: string, t: number): string {
+  const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
+  const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
+  return `#${pa.map((v, i) => Math.round(v + (pb[i] - v) * t).toString(16).padStart(2, '0')).join('')}`;
+}
+
+export function trustColor(trust: number, scheme: 'light' | 'dark'): string {
+  const d = DIVERGING[scheme];
+  const t = Math.max(0, Math.min(1, trust));
+  // Full saturation at 0.2 / 0.8; the Beta prior rarely moves further in short runs.
+  return t < 0.5 ? mix(d.mid, d.low, Math.min(1, (0.5 - t) / 0.3)) : mix(d.mid, d.high, Math.min(1, (t - 0.5) / 0.3));
+}
