@@ -41,7 +41,8 @@ for _ in range(24 * 7):          # one simulated week (24 ticks/day)
 print(result.metrics)
 ```
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design and
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design,
+[`docs/LLM.md`](docs/LLM.md) for Claude-driven agents, and
 [`docs/RULES.md`](docs/RULES.md) for every world rule and formula.
 
 ## Running the full application

@@ -65,8 +65,10 @@ class WorldManager:
                 # Records written after the last snapshot would be duplicated on replay.
                 await asyncio.to_thread(self.repo.truncate_after, world_id, row.snapshot_tick)
             status = row.status if row.status in ("finished",) else "paused"
-            runner = WorldRunner(sim, self.repo, self.hub, self.decider_factory(config, world_id), row.preset,
-                                 status=status)
+            decider = self.decider_factory(config, world_id)
+            if hasattr(decider, "restore_spend"):
+                decider.restore_spend(row.llm_spend_usd)
+            runner = WorldRunner(sim, self.repo, self.hub, decider, row.preset, status=status)
             self.runners[world_id] = runner
             if self.auto_resume and row.status == "running":
                 runner.start()

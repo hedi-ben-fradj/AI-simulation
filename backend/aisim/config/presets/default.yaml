@@ -81,7 +81,8 @@ existential_goal:
 
 llm:
   provider: none
-  model: claude-haiku-5-5
+  model: claude-opus-5-5
+  effort: low
   max_output_tokens: 800
   max_concurrent_requests: 5
   max_retries: 1

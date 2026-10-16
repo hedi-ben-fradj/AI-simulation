@@ -204,3 +204,20 @@ def test_database_failure_does_not_lose_ticks(db_url):
         repo.save_tick = original
         ticks = [m["tick"] for m in c.get(f"/api/worlds/{wid}/metrics").json()]
         assert ticks[:2] == [0, 1] and ticks == sorted(set(ticks))
+
+
+def test_mock_llm_world_records_usage_and_restores_spend(db_url):
+    overrides = {"simulation": {"population": 3},
+                 "llm": {"provider": "mock", "input_price_per_mtok": 1.0, "output_price_per_mtok": 1.0}}
+    with make_client(db_url) as c:
+        wid = create_world(c, overrides=overrides)["id"]
+        c.post(f"/api/worlds/{wid}/step", json={"count": 5})
+        llm = c.get(f"/api/worlds/{wid}/llm").json()
+        assert llm["live"]["provider"] == "mock"
+        assert llm["summary"]["requests"] > 0 and llm["summary"]["cost_usd"] > 0
+        spend = llm["live"]["spend_usd"]
+        decisions = c.get(f"/api/worlds/{wid}/decisions", params={"limit": 100}).json()
+        assert any(d["source"] == "llm" for d in decisions)
+    with make_client(db_url) as c:
+        live = c.get(f"/api/worlds/{wid}/llm").json()["live"]
+        assert live["spend_usd"] == pytest.approx(spend)

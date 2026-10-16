@@ -208,23 +208,36 @@ class ExistentialSection(_Section):
 
 class LLMSection(_Section):
     provider: Literal["anthropic", "mock", "none"] = "none"
-    model: str = "claude-haiku-5-5"
+    # Any Anthropic model ID; cheaper models (e.g. claude-haiku-5-5) cut cost for large populations.
+    model: str = "claude-opus-5-5"
     # How many agents are LLM-controlled; the rest use the rule-based policy.
     # None means all agents.
     llm_agents: int | None = None
     max_output_tokens: int = 800
+    # Reasoning effort (low | medium | high | xhigh | max); None uses the model default.
+    effort: str | None = "low"
+    # Retry policy-declined requests on Anthropic's recommended fallback model.
+    server_side_fallback: bool = True
+    # Cache the shared, static part of the prompt across agents and ticks.
+    prompt_caching: bool = True
     max_concurrent_requests: int = 5
     max_retries: int = 1
     request_timeout_seconds: float = 30
     requests_per_minute: int = 50
+    # Backpressure: at most this many LLM decisions are requested per tick;
+    # the rest get the rule-based fallback.
     max_queue_size: int = 50
-    # Spend caps in USD (None = unlimited).
+    # Spend caps in USD (None = unlimited). When reached, agents fall back to rules.
     maximum_world_spend: float | None = 5.0
     maximum_agent_daily_spend: float | None = 0.5
-    # Price per million tokens in USD, used for cost estimates.
-    input_price_per_mtok: float = 1.0
-    output_price_per_mtok: float = 5.0
-    temperature: float = 1.0
+    # Price per million tokens in USD for cost estimates (None = built-in table).
+    input_price_per_mtok: float | None = None
+    output_price_per_mtok: float | None = None
+    # Mock provider fault injection (for tests and offline demos).
+    mock_latency_seconds: float = 0.0
+    mock_failure_rate: float = 0.0
+    mock_invalid_output_rate: float = 0.0
+    mock_seed: int = 0
 
 
 class SimulationConfig(_Section):
