@@ -195,8 +195,15 @@ def decide(sim: "Simulation", request: "DecisionRequest", avoid: str | None = No
     if choice == "rest":
         return ActionProposal(action="rest", duration=2, visible_intention=_intent("rest"))
     if choice == "socialize":
+        # Prefer someone nearby; otherwise seek out a familiar face; otherwise go
+        # to a gathering place and hope to meet someone.
         near_known = [o for o in nearby if o.id in agent.relationships]
-        target = near_known[0].id if near_known else None
+        if near_known:
+            target = min(near_known, key=lambda o: (distance(agent.x, agent.y, o.x, o.y), o.id)).id
+        elif known_alive and rng.random() < 0.6:
+            target = max(known_alive, key=lambda o: (agent.relationships[o.id].affinity + rng.random() * 0.3, o.id)).id
+        else:
+            target = None
         return ActionProposal(action="socialize", target=target, visible_intention=_intent("socialize"))
     if choice == "talk":
         friend = max(known_alive, key=lambda o: (agent.relationships[o.id].familiarity, o.id))

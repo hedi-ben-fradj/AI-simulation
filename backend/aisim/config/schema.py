@@ -61,7 +61,7 @@ class WorldSection(_Section):
     food_restock_per_day: int = 40
     perception_radius: float = 18.0
     interaction_radius: float = 8.0
-    movement_speed_per_tick: float = 30.0
+    movement_speed_per_tick: float = 40.0
     movement_energy_per_unit: float = 0.05
     explore_distance: float = 25.0
     explore_discovery_probability: float = 0.15

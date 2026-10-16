@@ -43,3 +43,24 @@ print(result.metrics)
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design and
 [`docs/RULES.md`](docs/RULES.md) for every world rule and formula.
+
+## Running the full application
+
+Prerequisites: Python 3.11+, Node 20+, PostgreSQL 14+ (or use SQLite for a quick try).
+
+```bash
+# 1. Backend
+cd backend
+pip install -e ".[dev]"
+cp .env.example .env            # edit DATABASE_URL; optionally ANTHROPIC_API_KEY
+export $(grep -v '^#' .env | xargs)
+python -m aisim                 # http://127.0.0.1:8000 (runs migrations on startup)
+
+# 2. Frontend (separate terminal)
+cd frontend
+npm install
+npm run dev                     # http://localhost:5173 (proxies /api and /ws to the backend)
+```
+
+Open http://localhost:5173, click **New world**, choose a preset and run it.
+Without `DATABASE_URL`, the backend uses a local SQLite file (`backend/aisim.db`).

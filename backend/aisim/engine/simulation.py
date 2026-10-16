@@ -26,6 +26,7 @@ from . import existential as ex_mod
 from . import personality as pers_mod
 from . import trust as trust_mod
 from .actions import (
+    ARRIVAL_TOLERANCE,
     REGISTRY,
     ActionProposal,
     current_location,
@@ -632,6 +633,7 @@ class Simulation:
         self.executed[agent.id] = "travel" if task.travel_to else task.action
         time_fraction = max(0.0, 1.0 - agent.time_used_this_tick)
         if task.travel_to:
+            x0, y0 = agent.x, agent.y
             arrived, moved = self._travel(agent, task)
             if not arrived:
                 agent.time_allocation["travel"] = agent.time_allocation.get("travel", 0) + 1
@@ -648,8 +650,13 @@ class Simulation:
                           data={"location": loc.id if loc else None}, importance=0.05)
                 return
             if moved:
-                agent.time_allocation["travel"] = agent.time_allocation.get("travel", 0) + 1
-                return
+                # Arriving part-way through a tick leaves the rest of it for the action.
+                used = distance(x0, y0, agent.x, agent.y) / self.config.world.movement_speed_per_tick
+                time_fraction = max(0.0, time_fraction - used)
+                if time_fraction < 0.25:
+                    agent.time_allocation["travel"] = agent.time_allocation.get("travel", 0) + 1
+                    return
+                self.executed[agent.id] = task.action
         spec = REGISTRY.get(task.action)
         if spec is None:
             self._fail_task(agent, task, "unknown_action")
@@ -675,7 +682,7 @@ class Simulation:
                 self._fail_task(agent, task, "target_unavailable")
                 return False, False
             stop = self.config.world.interaction_radius * 0.8
-            if distance(agent.x, agent.y, other.x, other.y) <= stop + 1e-6:
+            if distance(agent.x, agent.y, other.x, other.y) <= stop + ARRIVAL_TOLERANCE:
                 return True, False
             return step_towards(self, agent, other.x, other.y, stop), True
         loc = self.world.locations.get(task.travel_to)
@@ -683,7 +690,7 @@ class Simulation:
             self._fail_task(agent, task, "invalid_target")
             return False, False
         stop = loc.radius * 0.5
-        if distance(agent.x, agent.y, loc.x, loc.y) <= stop + 1e-6:
+        if distance(agent.x, agent.y, loc.x, loc.y) <= stop + ARRIVAL_TOLERANCE:
             return True, False
         return step_towards(self, agent, loc.x, loc.y, stop), True
 

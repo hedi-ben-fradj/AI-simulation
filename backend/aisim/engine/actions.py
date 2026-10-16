@@ -112,11 +112,15 @@ def nearest_location(sim: "Simulation", agent: Agent, ltype: str) -> Location | 
     return min(candidates, key=lambda l: (distance(agent.x, agent.y, l.x, l.y), l.id))
 
 
+# Positions are rounded, so arrival needs a tolerance larger than the rounding step.
+ARRIVAL_TOLERANCE = 0.05
+
+
 def step_towards(sim: "Simulation", agent: Agent, tx: float, ty: float, stop_within: float = 0.0) -> bool:
     """Move the agent one tick towards (tx, ty). Returns True when arrived."""
     wc = sim.config.world
     d = distance(agent.x, agent.y, tx, ty)
-    if d <= stop_within + 1e-6:
+    if d <= stop_within + ARRIVAL_TOLERANCE:
         return True
     travel = min(wc.movement_speed_per_tick, d - stop_within)
     if agent.energy < 5:
@@ -127,7 +131,7 @@ def step_towards(sim: "Simulation", agent: Agent, tx: float, ty: float, stop_wit
     agent.y = round(min(max(agent.y, 0.0), wc.height), 3)
     sim.spend_energy(agent, travel * wc.movement_energy_per_unit)
     agent.bump_stat("distance_travelled", travel)
-    return distance(agent.x, agent.y, tx, ty) <= stop_within + 1e-6
+    return distance(agent.x, agent.y, tx, ty) <= stop_within + ARRIVAL_TOLERANCE
 
 
 def travel_ticks(sim: "Simulation", agent: Agent, tx: float, ty: float, stop_within: float = 0.0) -> int:

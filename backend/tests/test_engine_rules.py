@@ -272,3 +272,14 @@ def test_death_is_permanent_unless_replacement_enabled():
     run_action(s, "a1", ActionProposal(action="idle"))
     assert not a.alive
     assert len(s.world.alive_agents()) == 3
+
+
+def test_travel_always_arrives_despite_position_rounding():
+    """Regression: rounding once left agents a hair outside the stop radius forever."""
+    s = make_sim()
+    a = s.world.agents["a1"]
+    loc = next(l for l in s.world.locations.values() if l.type == "food")
+    a.x, a.y = loc.x + 3.0004, loc.y  # just outside radius * 0.5 == 3
+    a.hunger = 60
+    run_action(s, "a1", ActionProposal(action="eat"))
+    assert a.hunger < 60
