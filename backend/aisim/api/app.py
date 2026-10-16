@@ -240,6 +240,13 @@ def create_app(settings: Settings | None = None, decider_factory=None) -> FastAP
     async def traits(world_id: str, agent: str | None = None, r: Repository = Depends(repo)):
         return r.trait_history(world_id, agent)
 
+    @app.get("/api/worlds/{world_id}/analysis")
+    async def analysis(world_id: str, mgr: WorldManager = Depends(manager)):
+        from ..analysis.behavior import analyse_world
+
+        runner = await runner_or_404(world_id, mgr)
+        return analyse_world(runner.sim)
+
     @app.get("/api/worlds/{world_id}/llm")
     async def llm(world_id: str, limit: int = 50, mgr: WorldManager = Depends(manager), r: Repository = Depends(repo)):
         runner = await runner_or_404(world_id, mgr)

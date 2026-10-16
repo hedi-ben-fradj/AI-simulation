@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections import Counter
 from statistics import mean
+
+from .state import TRAITS
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -111,4 +113,5 @@ def compute_metrics(sim: "Simulation", result: "TickResult") -> dict[str, Any]:
         "decisions_rejected": sum(1 for d in result.decisions if not d.valid),
         "decisions_fallback": sum(1 for d in result.decisions if d.source == "fallback"),
         "trait_changes": len(result.trait_changes),
+        "traits_mean": {t: _m([a.personality[t] for a in alive]) for t in TRAITS},
     }

@@ -185,6 +185,8 @@ class Agent(BaseModel):
     y: float
     born_tick: int = 0
     personality: dict[str, float]
+    # Traits at birth; kept fixed so behaviour can be analysed without circularity.
+    initial_personality: dict[str, float] = Field(default_factory=dict)
     # Core resources and needs.
     tokens: float
     food: int = 0

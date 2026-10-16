@@ -137,6 +137,7 @@ def create_agent(config: SimulationConfig, streams: RandomStreams, index: int, t
         y=round(rng.uniform(0.2, 0.8) * config.world.height, 2),
         born_tick=tick,
         personality=personality,
+        initial_personality=dict(personality),
         tokens=rc.starting_tokens,
         food=rc.starting_food,
         energy=rc.starting_energy,

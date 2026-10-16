@@ -70,6 +70,7 @@ export const api = {
   trustChanges: (id: string, agent?: string) =>
     request<{ tick: number; agent_id: string; other_id: string; reason: string; positive: boolean; trust_before: number; trust_after: number }[]>(
       `/api/worlds/${id}/trust${agent ? `?agent=${agent}` : ''}`),
+  analysis: <T>(id: string) => request<T>(`/api/worlds/${id}/analysis`),
   metrics: (id: string, every = 1) => request<Metrics[]>(`/api/worlds/${id}/metrics?every=${every}`),
   llm: (id: string) => request<{ live: Record<string, any>; summary: Record<string, any>; recent: any[] }>(
     `/api/worlds/${id}/llm`),

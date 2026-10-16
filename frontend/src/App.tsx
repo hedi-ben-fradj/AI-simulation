@@ -13,6 +13,7 @@ import { EventFeed } from './components/EventFeed';
 import { Analytics } from './components/Analytics';
 import { LLMPanel } from './components/LLMPanel';
 import { SocietyPanel } from './components/SocietyPanel';
+import { MindPanel } from './components/MindPanel';
 import type { WorldSummary } from './types';
 import { LOCATION_COLORS, MOOD_COLORS, hex } from './theme';
 
@@ -137,6 +138,7 @@ export default function App() {
             <Tabs.List mb="sm">
               <Tabs.Tab value="world">World</Tabs.Tab>
               <Tabs.Tab value="society">Society</Tabs.Tab>
+              <Tabs.Tab value="mind">Mind</Tabs.Tab>
               <Tabs.Tab value="analytics">Analytics</Tabs.Tab>
               <Tabs.Tab value="llm">LLM usage</Tabs.Tab>
               <Group ml="auto" gap="xs">
@@ -215,6 +217,11 @@ export default function App() {
             <Tabs.Panel value="society">
               <SocietyPanel worldId={world.id} tick={world.tick} agents={world.agents} messages={stream.messages}
                 latest={stream.metrics[stream.metrics.length - 1]}
+                onSelectAgent={(id) => { setSelected(id); setTab('world'); }} />
+            </Tabs.Panel>
+
+            <Tabs.Panel value="mind">
+              <MindPanel worldId={world.id} tick={world.tick} metrics={stream.metrics}
                 onSelectAgent={(id) => { setSelected(id); setTab('world'); }} />
             </Tabs.Panel>
 
