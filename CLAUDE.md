@@ -275,6 +275,9 @@ backend/                  Python ≥3.11 package "aisim" (pyproject.toml)
   aisim/llm/              provider abstraction
     base.py               LLMRequest / LLMResponse / LLMError / LLMProvider protocol
     anthropic_provider.py Anthropic SDK (structured output, prompt caching, effort, server-side fallback)
+    openrouter_provider.py OpenRouter chat completions over httpx (json_schema, exact cost from usage)
+    claude_code_provider.py Claude subscription mode: runs the local `claude -p` CLI per decision
+    credentials.py        per-world API keys (memory only) with environment-variable fallback
     mock_provider.py      offline provider (answers with the rule policy's choice; injectable failures)
     factory.py, pricing.py (USD per Mtok), ratelimit.py (token bucket)
   aisim/runtime/
@@ -358,9 +361,26 @@ The next successful save flushes it. Statuses are
   - On models that support it, the beta `server-side-fallback-2026-07-01` with
     `fallbacks="default"` (Haiku models skip it).
   - Default model `claude-opus-5-5`. Prices are in `llm/pricing.py`.
-- The API key exists only in the backend environment (`ANTHROPIC_API_KEY`).
-  **Never send it to the frontend, log it or return it from the API.**
-  `/api/health` reports only whether a key is configured.
+- Other providers (`llm.provider`): `openrouter` (any `vendor/model`, default
+  `google/gemini-2.5-flash`; cost is the exact amount OpenRouter reports) and
+  `claude_code` (Claude subscription: each decision runs `claude -p --output-format
+  json --json-schema … --tools "" --strict-mcp-config`, with one conversation per
+  agent via `--session-id` then `--resume`, or `fresh`; API-key env vars are
+  stripped so the CLI's subscription login is used; flags are passed only if
+  `claude --help` lists them; cost 0, spend caps off). Details: `docs/LLM.md`.
+- **Keys**: `llm/credentials.py` resolves a key per world: a key typed on the
+  setup page (memory only, set via `create_world(api_key=…)` or
+  `POST /api/worlds/{id}/credentials`), else `ANTHROPIC_API_KEY` /
+  `OPENROUTER_API_KEY`. Decider stats expose `credential`
+  (`world|server|missing|subscription`) and `last_error_kind`; the LLM tab uses
+  them to ask for a key after a restart. **Never store a key in the config or
+  database, log it, return it from the API, or save it in the browser.**
+  `/api/health` and `/api/setup/options` report only whether server keys exist.
+  The CLI executable is chosen only by env vars (`AISIM_CLAUDE_PATH`, …), never by
+  API input.
+- `scripts/llm_smoke_test.py --provider openrouter|anthropic|claude_code|mock`
+  runs a small chatty world with real LLM agents and prints decisions, messages,
+  fallbacks and cost (keys come from the environment).
 
 ### Information boundaries (`agents/context.py`)
 An agent's context contains only:
@@ -424,8 +444,8 @@ Static UI: if `frontend/dist` exists (or `AISIM_STATIC_DIR`), the backend
 serves it at `/` with an SPA fallback and a path-traversal check. So
 `python -m aisim` serves the whole app on port 8000.
 
-Environment variables: `DATABASE_URL`, `ANTHROPIC_API_KEY`,
-`AISIM_AUTO_RESUME`, `AISIM_API_TOKEN`, `AISIM_CORS_ORIGINS`, `HOST`, `PORT`,
+Environment variables: `DATABASE_URL`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`,
+`AISIM_CLAUDE_PATH`, `AISIM_CLAUDE_WORKDIR`, `AISIM_CLAUDE_EXTRA_ARGS`, `AISIM_AUTO_RESUME`, `AISIM_API_TOKEN`, `AISIM_CORS_ORIGINS`, `HOST`, `PORT`,
 `LOG_LEVEL`, `AISIM_STATIC_DIR`. `.env` is read from the CWD or `backend/`.
 Uvicorn graceful shutdown is capped at 5 s.
 
@@ -536,9 +556,18 @@ python -m aisim                                   # API (+ built UI) on :8000
 cd frontend && npm ci && npm run dev              # UI dev server on :5173 (proxies to :8000)
 ```
 
-Using Claude: set `ANTHROPIC_API_KEY` in `backend/.env` and pick "Claude" on
-the setup page (or `llm.provider: anthropic`). "Mock LLM" runs the whole LLM
-pipeline offline for free.
+LLM agents: on the setup page pick **LLM provider API key** (OpenRouter or
+Anthropic; paste a key or rely on the server's env var) or **Claude
+subscription** (needs Claude Code installed and signed in on the backend's
+machine). "Mock LLM" runs the whole LLM pipeline offline for free. Never commit
+keys; the user has given test keys in chat before; use them only via environment
+variables.
+
+- In the cloud container, the `claude` CLI belongs to the hosted session itself,
+  not to the user's subscription: don't run real subscription-mode calls there.
+  Test with `tests/fixtures/fake_claude.py` (`AISIM_CLAUDE_PATH`), which mimics
+  the CLI's JSON output and session errors. Network egress may block
+  openrouter.ai (the user can allow it in the environment's network settings).
 
 ### Working in a cloud container (as previous agents did)
 - The container has no public address, so the user can't open your localhost.
@@ -558,7 +587,7 @@ pipeline offline for free.
 ## 7. Tests and CI
 
 ```bash
-cd backend && pytest -q                     # ~132 passed, 5 skipped (live LLM tests skip without a key)
+cd backend && pytest -q                     # ~156 passed, 5 skipped (live LLM tests skip without a key)
 TEST_DATABASE_URL=postgresql+psycopg://… pytest -q tests/test_api_persistence.py tests/test_experiments.py
 ANTHROPIC_API_KEY=… pytest -m live_llm tests/test_llm_live.py   # real API, costs money
 cd frontend && npm run typecheck && npm test && npm run build
@@ -568,7 +597,7 @@ cd frontend && npm run typecheck && npm test && npm run build
   determinism), `test_social_and_models`, `test_llm_decisions` (offline LLM
   pipeline: schema, budgets, timeouts, boundaries, request shape),
   `test_api_persistence` (API, WS, restore/truncate), `test_experiments`,
-  `test_analysis`, `test_setup`, `test_appearance`, `test_llm_live` (marked
+  `test_analysis`, `test_setup`, `test_appearance`, `test_providers` (OpenRouter via a mock transport, Claude CLI via `tests/fixtures/fake_claude.py`, key handling), `test_llm_live` (marked
   `live_llm`).
 - `tests/conftest.py` has helpers: `make_sim(overrides)`, `place(sim, agent,
   type)`, `run_action(sim, agent_id, proposal)` for single-tick rule tests.

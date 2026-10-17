@@ -25,7 +25,11 @@ For development, `./run.sh --dev` adds the Vite dev server with hot reload on
 | Variable | Default | Meaning |
 |---|---|---|
 | `DATABASE_URL` | `sqlite:///./aisim.db` | SQLAlchemy URL; use PostgreSQL (`postgresql+psycopg://…`) for real use |
-| `ANTHROPIC_API_KEY` | – | backend only; required for `llm.provider: anthropic` |
+| `ANTHROPIC_API_KEY` | – | backend only; used by `llm.provider: anthropic` when no key was typed for the world |
+| `OPENROUTER_API_KEY` | – | same for `llm.provider: openrouter` |
+| `AISIM_CLAUDE_PATH` | `claude` on PATH | Claude subscription mode: the Claude Code executable |
+| `AISIM_CLAUDE_WORKDIR` | `~/.cache/aisim/claude-code` | per-world working folders for the CLI (its sessions are stored per folder) |
+| `AISIM_CLAUDE_EXTRA_ARGS` | – | extra arguments appended to every `claude -p` call |
 | `AISIM_AUTO_RESUME` | `false` | restart worlds that were running at shutdown |
 | `AISIM_API_TOKEN` | – | if set, mutating API calls require `Authorization: Bearer <token>` (the UI stores it in localStorage under `aisim.apiToken`) |
 | `AISIM_CORS_ORIGINS` | `*` | comma-separated allowed origins |

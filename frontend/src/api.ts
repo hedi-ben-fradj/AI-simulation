@@ -61,6 +61,9 @@ export const api = {
   pause: (id: string) => post<WorldView>(`/api/worlds/${id}/pause`),
   step: (id: string, count = 1) => post<WorldView>(`/api/worlds/${id}/step`, { count }),
   speed: (id: string, speed: number) => post<WorldView>(`/api/worlds/${id}/speed`, { speed }),
+  // The key is kept in the server's memory for this world only; the response never contains it.
+  setCredentials: (id: string, apiKey: string) =>
+    post<{ llm: Record<string, any> }>(`/api/worlds/${id}/credentials`, { api_key: apiKey }),
   agent: (id: string, agentId: string) => request<AgentDetail>(`/api/worlds/${id}/agents/${agentId}`),
   events: (id: string, params: Record<string, string | number | boolean> = {}) =>
     request<SimEvent[]>(`/api/worlds/${id}/events?${new URLSearchParams(params as any)}`),

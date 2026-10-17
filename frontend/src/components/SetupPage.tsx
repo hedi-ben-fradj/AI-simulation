@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Accordion, ActionIcon, Alert, Badge, Box, Button, Card, Grid, Group, NumberInput, ScrollArea, SegmentedControl, Select,
-  SimpleGrid, Slider, Stack, Switch, Text, TextInput, Title, Tooltip, useComputedColorScheme,
+  Accordion, ActionIcon, Alert, Autocomplete, Badge, Box, Button, Card, Code, Grid, Group, NumberInput, PasswordInput, Radio,
+  ScrollArea, SegmentedControl, Select, SimpleGrid, Slider, Stack, Switch, Text, TextInput, Title, Tooltip,
+  useComputedColorScheme,
 } from '@mantine/core';
 import { api } from '../api';
 import type { WorldSummary, WorldView } from '../types';
@@ -32,18 +33,26 @@ interface Settings {
   hazards: string;
   replace_dead: boolean;
   existential_goal: boolean;
-  provider: 'none' | 'mock' | 'anthropic';
+  provider: Provider;
   llm_agents: number | null;
   model: string | null;
   effort: string | null;
   max_world_spend: number | null;
+  claude_session_mode: 'per_agent' | 'fresh';
+  decision_timeout: number | null;
 }
+
+type Provider = 'none' | 'mock' | 'anthropic' | 'openrouter' | 'claude_code';
+type Mind = 'none' | 'mock' | 'api' | 'subscription';
+const mindOf = (p: Provider): Mind => (p === 'anthropic' || p === 'openrouter' ? 'api' : p === 'claude_code' ? 'subscription' : p);
+const KEY_NAMES: Record<string, string> = { anthropic: 'ANTHROPIC_API_KEY', openrouter: 'OPENROUTER_API_KEY' };
 
 const DEFAULTS: Settings = {
   name: '', population: 5, resource_level: 'normal', personality_mode: 'random', personality_deviation: 0.15,
   personality_distribution: 'normal', trait_means: {}, days: null, seed: 42, world_size: 'auto',
   communication_cost: 'normal', trust_prior: 'neutral', allow_theft: true, hazards: 'low', replace_dead: false,
   existential_goal: true, provider: 'none', llm_agents: null, model: null, effort: null, max_world_spend: 2,
+  claude_session_mode: 'per_agent', decision_timeout: null,
 };
 
 const LEVELS = ['very_scarce', 'scarce', 'almost_scarce', 'normal', 'almost_abundant', 'abundant', 'very_abundant'];
@@ -99,9 +108,15 @@ export function SetupPage({ worlds, onCreated, onOpenWorld }: Props) {
   const [preview, setPreview] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // API keys live only in this component's state: they are not saved in the browser
+  // and are sent to the server only when a world is created.
+  const [keys, setKeys] = useState<Record<string, string>>({ anthropic: '', openrouter: '' });
   const seq = useRef(0);
 
   const set = <K extends keyof Settings>(key: K, value: Settings[K]) => setS((prev) => ({ ...prev, [key]: value }));
+  // Model IDs differ per provider, so switching provider goes back to that provider's default.
+  const setProvider = (provider: Provider) => setS((prev) => ({ ...prev, provider, model: null, effort: null }));
+  const typedKey = (keys[s.provider] ?? '').trim();
 
   useEffect(() => {
     api.setupOptions().then(setOptions).catch((e) => setError(String(e)));
@@ -117,18 +132,19 @@ export function SetupPage({ worlds, onCreated, onOpenWorld }: Props) {
     }
     const id = ++seq.current;
     const t = setTimeout(() => {
-      api.setupPreview({ ...payload, start: false })
+      // The preview only needs to know whether a key was typed, not the key itself.
+      api.setupPreview({ ...payload, api_key: typedKey ? 'entered' : null, start: false })
         .then((p) => { if (id === seq.current) { setPreview(p); setError(null); } })
         .catch((e) => { if (id === seq.current) setError(String(e)); });
     }, 250);
     return () => clearTimeout(t);
-  }, [payload]);
+  }, [payload, !!typedKey]);
 
   const create = async (start: boolean) => {
     setBusy(true);
     setError(null);
     try {
-      onCreated(await api.setupWorld({ ...payload, start }));
+      onCreated(await api.setupWorld({ ...payload, api_key: typedKey || null, start }));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -260,27 +276,80 @@ export function SetupPage({ worlds, onCreated, onOpenWorld }: Props) {
             </Group>
           </Section>
 
-          <Section title="Agent minds" description="Rule-based agents are free and reproducible. Claude agents reason in language; calls happen only on the server and are capped by the spend limit.">
-            <SegmentedControl value={s.provider} onChange={(v) => set('provider', v as Settings['provider'])}
-              data={[{ value: 'none', label: 'Rule-based' }, { value: 'mock', label: 'Mock LLM (offline test)' }, { value: 'anthropic', label: 'Claude' }]} />
+          <Section title="Agent minds" description="Rule-based agents are free and reproducible. LLM agents reason in language; every call happens on the server, and the engine still checks each action against the world's rules.">
+            <SegmentedControl value={mindOf(s.provider)} fullWidth
+              onChange={(v) => setProvider(v === 'api' ? 'openrouter' : v === 'subscription' ? 'claude_code' : (v as Provider))}
+              data={[{ value: 'none', label: 'Rule-based' }, { value: 'mock', label: 'Mock LLM (offline)' },
+                { value: 'api', label: 'LLM provider API key' }, { value: 'subscription', label: 'Claude subscription' }]} />
+
+            {mindOf(s.provider) === 'api' && (
+              <>
+                <Radio.Group label="Provider" value={s.provider} onChange={(v) => setProvider(v as Provider)}>
+                  <Group mt={4}>
+                    <Radio value="openrouter" label="OpenRouter (Claude, Gemini, GPT… with one key)" />
+                    <Radio value="anthropic" label="Anthropic (Claude API)" />
+                  </Group>
+                </Radio.Group>
+                <PasswordInput label={KEY_NAMES[s.provider]} placeholder={s.provider === 'openrouter' ? 'sk-or-v1-…' : 'sk-ant-…'}
+                  autoComplete="off" value={keys[s.provider] ?? ''}
+                  onChange={(e) => { const v = e.currentTarget.value; setKeys((k) => ({ ...k, [s.provider]: v })); }}
+                  description={options?.server_keys?.[s.provider]
+                    ? `Used only for this world. Leave empty to use the server's ${KEY_NAMES[s.provider]}.`
+                    : 'Used only for this world. Kept in the server\'s memory, never saved to disk or shown again.'} />
+              </>
+            )}
+
+            {s.provider === 'claude_code' && (
+              <Alert color={options?.claude_cli?.available === false ? 'yellow' : 'blue'} variant="light"
+                title={options?.claude_cli?.available === false ? 'Claude Code was not found on the server' : 'Uses your Claude subscription'}>
+                <Text size="sm">
+                  Each decision runs <Code>claude -p</Code> on the computer running the backend, signed in with your
+                  Claude account (Pro/Max), so nothing is billed per token here; it counts toward your plan's usage
+                  limits. Install Claude Code and sign in once by running <Code>claude</Code> in a terminal.
+                  The CLI runs with all tools disabled.
+                </Text>
+                {options?.claude_cli?.available && <Text size="xs" c="dimmed" mt={4}>Found: {options.claude_cli.version ?? 'claude'}</Text>}
+              </Alert>
+            )}
+
             {s.provider !== 'none' && (
               <Group grow align="flex-end">
                 <NumberInput label="How many agents use the LLM" placeholder={`All ${s.population}`} min={0} max={s.population}
                   value={s.llm_agents ?? ''} onChange={(v) => set('llm_agents', v === '' ? null : Number(v))} />
-                {s.provider === 'anthropic' && (
+                {s.provider !== 'mock' && (
                   <>
-                    <Select label="Model" placeholder="claude-opus-5-5" value={s.model} onChange={(v) => set('model', v)} clearable
-                      data={options?.models ?? []} />
-                    <Select label="Effort" placeholder="low" value={s.effort} onChange={(v) => set('effort', v)} clearable
-                      data={['low', 'medium', 'high']} />
-                    <NumberInput label="Spend cap (USD)" min={0} decimalScale={2} value={s.max_world_spend ?? ''}
-                      onChange={(v) => set('max_world_spend', v === '' ? null : Number(v))} placeholder="no cap" />
+                    <Autocomplete label="Model" placeholder={options?.default_models?.[s.provider] ?? ''} value={s.model ?? ''}
+                      onChange={(v) => set('model', v.trim() ? v : null)} data={options?.model_suggestions?.[s.provider] ?? []} />
+                    <Select label="Effort" placeholder="low" value={s.effort}
+                      onChange={(v) => set('effort', v)} clearable data={['low', 'medium', 'high']} />
                   </>
+                )}
+                {(s.provider === 'anthropic' || s.provider === 'openrouter') && (
+                  <NumberInput label="Spend cap (USD)" min={0} decimalScale={2} value={s.max_world_spend ?? ''}
+                    onChange={(v) => set('max_world_spend', v === '' ? null : Number(v))} placeholder="no cap" />
                 )}
               </Group>
             )}
-            {s.provider === 'anthropic' && options && !options.anthropic_key_configured && (
-              <Alert color="yellow">The server has no ANTHROPIC_API_KEY, so Claude agents will fall back to rule-based decisions.</Alert>
+
+            {s.provider === 'claude_code' && (
+              <Group grow align="flex-end">
+                <div>
+                  <Text size="sm" fw={500} mb={4}>Conversation</Text>
+                  <SegmentedControl size="xs" fullWidth value={s.claude_session_mode}
+                    onChange={(v) => set('claude_session_mode', v as Settings['claude_session_mode'])}
+                    data={[{ value: 'per_agent', label: 'One per agent (--resume)' }, { value: 'fresh', label: 'Fresh each decision' }]} />
+                </div>
+                <NumberInput label="Wait per tick (seconds)" placeholder="120" min={5} max={600} value={s.decision_timeout ?? ''}
+                  onChange={(v) => set('decision_timeout', v === '' ? null : Number(v))} />
+              </Group>
+            )}
+            {s.provider === 'claude_code' && (
+              <Text size="xs" c="dimmed">
+                {s.claude_session_mode === 'per_agent'
+                  ? 'Each agent keeps its own Claude Code conversation: the first decision starts it, later ones continue it with --resume, so the agent also remembers its earlier reasoning.'
+                  : 'Every decision is a new conversation; the agent only knows what the simulation tells it (its memories and situation).'}
+                {' '}Agents that do not answer in time use the rule-based policy for that tick.
+              </Text>
             )}
           </Section>
         </Stack>

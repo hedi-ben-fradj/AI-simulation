@@ -126,16 +126,49 @@ docker compose up --build        # then open http://localhost:8080
    traits drive behaviour, and population statistics. **Experiments** compares
    settings across several random seeds.
 
-### Optional: let Claude decide for the agents
+### Optional: let an LLM decide for the agents
 
-1. Get an API key at https://console.anthropic.com (API usage is billed by Anthropic).
-2. Copy `backend/.env.example` to `backend/.env` and set
-   `ANTHROPIC_API_KEY=sk-ant-...` (the server reads `.env` automatically; the key
-   never reaches the browser).
-3. Restart the server, and on the setup page choose **Agent minds → Claude**. Keep
-   the **spend cap** set; the **LLM usage** tab shows requests and cost.
+On the setup page, **Agent minds** offers four choices:
 
-Tip: **Mock LLM (offline test)** exercises the same pipeline with no key and no cost.
+| Choice | What it uses | Cost |
+|---|---|---|
+| **Rule-based** | the built-in policy | free, reproducible |
+| **Mock LLM (offline)** | the whole LLM pipeline with canned answers | free; for testing |
+| **LLM provider API key** | **OpenRouter** (Claude, Gemini, GPT… with one key) or **Anthropic** | billed by the provider; capped per world |
+| **Claude subscription** | the `claude` command (Claude Code) on the computer running the server, signed in with your Pro/Max plan | counts toward your plan's usage limits |
+
+**With an API key.** Pick the provider, then paste the key into the
+`OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` field. That key is used only for that
+world and kept only in the server's memory: it is never saved to disk, logged or
+sent back to the browser. After a server restart the world asks for it again on
+its **LLM usage** tab. To avoid typing it, put it in `backend/.env` instead
+(`OPENROUTER_API_KEY=sk-or-...` or `ANTHROPIC_API_KEY=sk-ant-...`) and leave the
+field empty. Keys: https://openrouter.ai/keys or https://console.anthropic.com.
+Good inexpensive models: `google/gemini-2.5-flash` (the OpenRouter default) or
+`anthropic/claude-haiku-4.5`. Keep the **spend cap** set; the **LLM usage** tab
+shows requests and the exact cost.
+
+**With your Claude subscription.**
+1. Install Claude Code (https://claude.com/claude-code) on the computer that runs
+   the server, run `claude` once in a terminal and sign in with your Claude account.
+2. If an `ANTHROPIC_API_KEY` is set in your shell, that's fine: the app removes it
+   when it starts `claude`, so the subscription is used.
+3. On the setup page choose **Claude subscription**, pick a model (`sonnet`,
+   `haiku` or `opus`) and a conversation mode:
+   * **One per agent (--resume)**: each agent has its own Claude Code conversation.
+     The first decision starts it (`claude -p --session-id <id>`), later ones continue
+     it (`claude -p --resume <id> …`), so the agent also remembers its earlier reasoning.
+   * **Fresh each decision**: every decision is a new, unsaved conversation.
+4. Each decision starts a `claude` process (a few seconds each), so keep the speed
+   at 1× or lower. The **Wait per tick** setting (default 120 s) is how long a tick
+   waits for answers before late agents use the rule-based policy for that tick.
+
+The CLI runs with **all tools disabled**, no MCP servers, in an empty folder
+(`~/.cache/aisim/claude-code/<world>`). Agents read each other's messages, so this
+stops a message from making Claude run anything on your computer. To test the
+setup without the UI: `cd backend && python scripts/llm_smoke_test.py --provider claude_code --model haiku --ticks 4`.
+
+Tip: **Mock LLM (offline)** exercises the same pipeline with no key and no cost.
 
 ### Optional: PostgreSQL instead of the built-in SQLite file
 
@@ -250,7 +283,7 @@ docker-compose.yml       PostgreSQL + backend + frontend
 | Area | Status |
 |---|---|
 | World simulation: configurable world, distinct agents, ticks, limited actions, hunger/health/energy/money/inventory/time, work/eat/rest/socialise/explore/reflect, death, enforced costs | ✅ |
-| AI agents: provider-backed proposals, validation, short-term context + persistent memories, private/public boundaries, personalities, existential goal without dominance, timeouts/rate limits/invalid output handled | ✅ (live runs need `ANTHROPIC_API_KEY`) |
+| AI agents: provider-backed proposals, validation, short-term context + persistent memories, private/public boundaries, personalities, existential goal without dominance, timeouts/rate limits/invalid output handled | ✅ (live runs need an Anthropic or OpenRouter key, or a Claude subscription) |
 | Social: communication with send/process costs, directed trust updated by observed evidence, cooperation/trade/help/refusal/conflict, events | ✅ |
 | Persistence: PostgreSQL, events, messages, memories, relationships, trait history, LLM usage, resume after restart, event inspection | ✅ |
 | Visualisation: 2D world, movement, intention bubbles, agent inspector, events/messages, population/economy/health statistics | ✅ |

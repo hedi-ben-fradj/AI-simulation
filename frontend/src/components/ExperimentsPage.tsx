@@ -119,11 +119,12 @@ function NewExperimentModal({ opened, onClose, onCreated }: { opened: boolean; o
         <Group grow>
           <Select label="Agent decisions" value={provider} onChange={(v) => v && setProvider(v)} allowDeselect={false}
             data={[{ value: 'none', label: 'Rule-based (fast, free, reproducible)' }, { value: 'mock', label: 'Mock LLM (offline)' },
-              { value: 'anthropic', label: 'Anthropic Claude (API cost, capped)' }]} />
+              { value: 'anthropic', label: "Anthropic Claude (server's ANTHROPIC_API_KEY)" },
+              { value: 'openrouter', label: "OpenRouter (server's OPENROUTER_API_KEY)" }]} />
           <NumberInput label="Runs in parallel" min={1} max={8} value={parallel} onChange={setParallel} />
         </Group>
-        {provider === 'anthropic' && (
-          <Alert color="yellow">LLM experiments make real API calls: {runs} runs × {String(ticks)} ticks. Per-world and per-experiment spend caps apply.</Alert>
+        {(provider === 'anthropic' || provider === 'openrouter') && (
+          <Alert color="yellow">LLM experiments use the API key set in the server's environment and make real API calls: {runs} runs × {String(ticks)} ticks. Per-world and per-experiment spend caps apply.</Alert>
         )}
         {error && <Alert color="red">{error}</Alert>}
         <Group justify="space-between">

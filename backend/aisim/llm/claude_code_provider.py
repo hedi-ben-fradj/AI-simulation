@@ -48,7 +48,7 @@ _help_cache: dict[str, set[str]] = {}
 
 
 def find_cli() -> str | None:
-    configured = os.environ.get("AISIM_CLAUDE_PATH", "").strip()
+    configured = os.path.expanduser(os.environ.get("AISIM_CLAUDE_PATH", "").strip())
     if configured:
         return configured if (shutil.which(configured) or Path(configured).is_file()) else None
     return shutil.which("claude")
@@ -98,7 +98,8 @@ class ClaudeCodeProvider:
         self.effort = effort
         self.session_mode = session_mode
         self.executable = executable or find_cli()
-        base = Path(workdir or os.environ.get("AISIM_CLAUDE_WORKDIR") or Path.home() / ".cache" / "aisim" / "claude-code")
+        base = Path(workdir or os.environ.get("AISIM_CLAUDE_WORKDIR") or Path.home() / ".cache" / "aisim" / "claude-code"
+                    ).expanduser()
         # One empty directory per world: sessions are stored per working directory,
         # and nothing in it (no CLAUDE.md, no settings) leaks into the prompt.
         self.workdir = base / re.sub(r"[^A-Za-z0-9_-]", "_", self.world_id)

@@ -2,10 +2,21 @@
 
 ## Secrets
 
-* `ANTHROPIC_API_KEY` is read from the backend environment by the Anthropic SDK.
-  It is never stored in the database, never logged, never included in API
-  responses (`/api/health` only reports whether a key is configured), and the
-  frontend never calls a model provider.
+* Provider keys come from the backend environment (`ANTHROPIC_API_KEY`,
+  `OPENROUTER_API_KEY`) or are typed on the setup page for one world. A typed key
+  is sent once (when the world is created, or via `/api/worlds/{id}/credentials`),
+  held only in the backend process's memory, and is not part of the stored
+  configuration, logs or any API response (`/api/health` and `/api/setup/options`
+  only report whether a server key exists). The browser does not save it, and the
+  frontend never calls a model provider. Tests check that a typed key appears in
+  no response and not in the database file.
+* **Claude subscription mode** runs the local `claude` CLI. Because prompts contain
+  other agents' messages, the CLI gets no tools (`--tools ""`), no MCP servers and
+  an empty working directory, so a manipulated reply can only be a (validated)
+  action. The executable is chosen by environment variables only, never by API
+  input (configuration overrides reject unknown keys). Anyone who can create
+  worlds through the API can spend the server's subscription or keys: set
+  `AISIM_API_TOKEN` if the server is reachable by others.
 * `.env` files are git-ignored; `.env.example` contains no secrets.
 
 ## API surface
