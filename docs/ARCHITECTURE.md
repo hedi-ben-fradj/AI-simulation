@@ -108,6 +108,14 @@ simulation.
   and read status (`messages.read_tick`), the sender's intention and their
   interactions. Focusing on a conversation dims everyone else on the map, follows
   the participants and animates each message as an envelope.
+* **Chronicle.** When a day ends, `runtime/chronicle.py` gathers the day's
+  records (`Repository.day_records`) plus every agent's state at nightfall and
+  builds a digest with ranked highlights (`analysis/chronicle.py`). A built-in
+  template writes a storyline immediately; if the world has an LLM, the model
+  then rewrites it from the same digest (it may not invent events), continuing
+  from the previous days' headlines. Stored in `day_summaries` (migration 0003);
+  runs in the background, never delaying ticks. Days of older worlds are
+  backfilled with the template when the chronicle is opened.
 * **Day and night.** A darkness layer follows the in-world hour; windows, the
   market lamp and the campfire glow at night.
 

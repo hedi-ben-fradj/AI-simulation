@@ -13,6 +13,8 @@ export interface WorldStream {
   messages: Message[];
   connected: boolean;
   lastTickAt: number;
+  /** Increases whenever a day's chronicle is written or rewritten. */
+  chronicleVersion: number;
   error: string | null;
   refresh: () => Promise<void>;
   setWorld: (w: WorldView) => void;
@@ -27,6 +29,7 @@ export function useWorldStream(worldId: string | null): WorldStream {
   const [messages, setMessages] = useState<Message[]>([]);
   const [connected, setConnected] = useState(false);
   const [lastTickAt, setLastTickAt] = useState(0);
+  const [chronicleVersion, setChronicleVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -81,6 +84,8 @@ export function useWorldStream(worldId: string | null): WorldStream {
           });
           if (p.events.length) setEvents((prev) => [...prev, ...p.events].slice(-MAX_EVENTS));
           if (p.messages.length) setMessages((prev) => [...prev, ...p.messages].slice(-MAX_MESSAGES));
+        } else if (data.type === 'chronicle') {
+          setChronicleVersion((v) => v + 1);
         } else if (data.type === 'snapshot' || data.type === 'status') {
           setWorld((prev) => ({ ...(prev ?? {}), ...data.world }));
         }
@@ -105,5 +110,5 @@ export function useWorldStream(worldId: string | null): WorldStream {
     };
   }, [worldId, refresh]);
 
-  return { world, metrics, events, messages, connected, lastTickAt, error, refresh, setWorld };
+  return { world, metrics, events, messages, connected, lastTickAt, chronicleVersion, error, refresh, setWorld };
 }

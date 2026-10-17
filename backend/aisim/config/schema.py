@@ -249,6 +249,17 @@ class LLMSection(_Section):
     mock_seed: int = 0
 
 
+class ChronicleSection(_Section):
+    """The daily storyline (see aisim/analysis/chronicle.py)."""
+
+    enabled: bool = True
+    # auto: the world's LLM writes each day's storyline when the world uses one
+    # (anthropic, openrouter, claude_code), otherwise the built-in template does;
+    # template: never use the LLM; llm: same as auto (kept explicit for configs).
+    narrator: Literal["auto", "template", "llm"] = "auto"
+    max_output_tokens: int = Field(1500, ge=200, le=8000)
+
+
 class SimulationConfig(_Section):
     name: str = "default"
     description: str = ""
@@ -267,3 +278,4 @@ class SimulationConfig(_Section):
     personality: PersonalitySection = Field(default_factory=PersonalitySection)
     existential_goal: ExistentialSection = Field(default_factory=ExistentialSection)
     llm: LLMSection = Field(default_factory=LLMSection)
+    chronicle: ChronicleSection = Field(default_factory=ChronicleSection)

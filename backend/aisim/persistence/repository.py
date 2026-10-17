@@ -11,11 +11,13 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy.exc import IntegrityError
 
 from ..engine.simulation import Simulation, TickResult
 from .db import Database
 from .models import (
     AgentRow,
+    DaySummaryRow,
     DecisionRow,
     EventRow,
     ExperimentRow,
@@ -150,7 +152,7 @@ class Repository:
 
     def delete_world(self, world_id: str) -> None:
         with self._locked(), self.db.session() as s:
-            for table in (*PER_TICK_TABLES, MetricRow, RelationshipRow, AgentRow):
+            for table in (*PER_TICK_TABLES, MetricRow, RelationshipRow, AgentRow, DaySummaryRow):
                 s.execute(delete(table).where(table.world_id == world_id))
             s.execute(delete(WorldRow).where(WorldRow.id == world_id))
 
@@ -162,6 +164,8 @@ class Repository:
                                (TrustChangeRow, TrustChangeRow.tick), (TraitHistoryRow, TraitHistoryRow.tick),
                                (MetricRow, MetricRow.tick), (LLMUsageRow, LLMUsageRow.tick)):
                 s.execute(delete(table).where(table.world_id == world_id, col >= tick))
+            # Days that are no longer complete are written again when they finish.
+            s.execute(delete(DaySummaryRow).where(DaySummaryRow.world_id == world_id, DaySummaryRow.to_tick > tick))
             # Reads that happened after the snapshot are replayed too.
             s.execute(update(MessageRow).where(MessageRow.world_id == world_id, MessageRow.read_tick >= tick)
                       .values(read_tick=None))
@@ -211,6 +215,93 @@ class Repository:
             "id": r.message_id, "sender_id": r.sender_id, "recipient_id": r.recipient_id, "content": r.content,
             "tokens": r.tokens, "sent_tick": r.sent_tick, "deliver_tick": r.deliver_tick,
             "token_cost": r.token_cost, "existential": r.existential, "read_tick": r.read_tick} for r in reversed(rows)]
+
+    def day_records(self, world_id: str, from_tick: int, to_tick: int) -> dict[str, list[dict[str, Any]]]:
+        """Everything recorded in ticks ``from_tick`` .. ``to_tick - 1`` (for the chronicle)."""
+        w = world_id
+        with self.db.session() as s:
+            events = list(s.scalars(select(EventRow).where(
+                EventRow.world_id == w, EventRow.tick >= from_tick, EventRow.tick < to_tick,
+                EventRow.type.notin_(("work", "eat", "arrive", "buy_food", "study", "trait_change")))
+                .order_by(EventRow.id)))
+            messages = list(s.scalars(select(MessageRow).where(
+                MessageRow.world_id == w, MessageRow.sent_tick >= from_tick, MessageRow.sent_tick < to_tick)
+                .order_by(MessageRow.id)))
+            decisions = s.execute(select(
+                DecisionRow.tick, DecisionRow.agent_id, DecisionRow.source, DecisionRow.valid, DecisionRow.reason,
+                DecisionRow.applied_action, DecisionRow.visible_intention, DecisionRow.existential_active)
+                .where(DecisionRow.world_id == w, DecisionRow.tick >= from_tick, DecisionRow.tick < to_tick)
+                .order_by(DecisionRow.id)).all()
+            memories = list(s.scalars(select(MemoryRow).where(
+                MemoryRow.world_id == w, MemoryRow.tick >= from_tick, MemoryRow.tick < to_tick,
+                MemoryRow.kind.in_(("reflection", "belief", "note"))).order_by(MemoryRow.id)))
+            trust = list(s.scalars(select(TrustChangeRow).where(
+                TrustChangeRow.world_id == w, TrustChangeRow.tick >= from_tick, TrustChangeRow.tick < to_tick)
+                .order_by(TrustChangeRow.id)))
+            traits = list(s.scalars(select(TraitHistoryRow).where(
+                TraitHistoryRow.world_id == w, TraitHistoryRow.tick >= from_tick, TraitHistoryRow.tick < to_tick)
+                .order_by(TraitHistoryRow.id)))
+            metrics = [r.data for r in s.execute(select(MetricRow.data).where(
+                MetricRow.world_id == w, MetricRow.tick >= from_tick, MetricRow.tick < to_tick)
+                .order_by(MetricRow.tick))]
+        return {
+            "events": [_event_dict(r) for r in events],
+            "messages": [{"id": r.message_id, "sender_id": r.sender_id, "recipient_id": r.recipient_id,
+                          "content": r.content, "sent_tick": r.sent_tick, "deliver_tick": r.deliver_tick,
+                          "existential": r.existential, "read_tick": r.read_tick} for r in messages],
+            "decisions": [{"tick": d.tick, "agent_id": d.agent_id, "source": d.source, "valid": d.valid,
+                           "reason": d.reason, "applied_action": d.applied_action,
+                           "visible_intention": d.visible_intention, "existential_active": d.existential_active}
+                          for d in decisions],
+            "memories": [{"agent_id": r.agent_id, "tick": r.tick, "kind": r.kind, "content": r.content,
+                          "tags": r.tags, "source": r.source} for r in memories],
+            "trust_changes": [{"tick": r.tick, "agent_id": r.agent_id, "other_id": r.other_id, "reason": r.reason,
+                               "trust_before": r.trust_before, "trust_after": r.trust_after} for r in trust],
+            "trait_changes": [{"tick": r.tick, "agent_id": r.agent_id, "trait": r.trait, "old": r.old, "new": r.new}
+                              for r in traits],
+            "metrics": metrics,
+        }
+
+    # ------------------------------------------------------------------ chronicle
+    def save_day_summary(self, world_id: str, day: int, from_tick: int, to_tick: int, headline: str, story: str,
+                         digest: dict[str, Any], narrator: str = "template", model: str | None = None,
+                         notable: list[str] | None = None, only_if_missing: bool = False) -> bool:
+        """Insert or replace a day's storyline; with ``only_if_missing`` never replace one. Returns True if saved."""
+        try:
+            return self._save_day_summary(world_id, day, from_tick, to_tick, headline, story, digest, narrator, model,
+                                          notable, only_if_missing)
+        except IntegrityError:  # another writer inserted the same day concurrently
+            if only_if_missing:
+                return False
+            return self._save_day_summary(world_id, day, from_tick, to_tick, headline, story, digest, narrator, model,
+                                          notable, False)
+
+    def _save_day_summary(self, world_id, day, from_tick, to_tick, headline, story, digest, narrator, model,
+                          notable, only_if_missing) -> bool:
+        with self._locked(), self.db.session() as s:
+            row = s.scalars(select(DaySummaryRow).where(DaySummaryRow.world_id == world_id,
+                                                        DaySummaryRow.day == day)).first()
+            if row is not None and only_if_missing:
+                return False
+            if row is None:
+                row = DaySummaryRow(world_id=world_id, day=day)
+                s.add(row)
+            row.from_tick, row.to_tick, row.headline, row.story = from_tick, to_tick, headline, story
+            row.digest, row.narrator, row.model, row.notable = digest, narrator, model, notable or []
+            row.updated_at = datetime.now(timezone.utc)
+        return True
+
+    def day_summaries(self, world_id: str, with_digest: bool = False) -> list[dict[str, Any]]:
+        with self.db.session() as s:
+            rows = list(s.scalars(select(DaySummaryRow).where(DaySummaryRow.world_id == world_id)
+                                  .order_by(DaySummaryRow.day)))
+        return [_day_dict(r, with_digest) for r in rows]
+
+    def day_summary(self, world_id: str, day: int) -> dict[str, Any] | None:
+        with self.db.session() as s:
+            row = s.scalars(select(DaySummaryRow).where(DaySummaryRow.world_id == world_id,
+                                                        DaySummaryRow.day == day)).first()
+            return _day_dict(row, True) if row else None
 
     def intentions(self, world_id: str, agent_ticks: set[tuple[str, int]]) -> dict[tuple[str, int], str]:
         """Visible intention of each (agent, tick) decision, where one was recorded."""
@@ -372,6 +463,18 @@ class Repository:
 def _bulk(session, table, rows: list[dict[str, Any]]) -> None:
     if rows:
         session.execute(insert(table), rows)
+
+
+def _day_dict(r: DaySummaryRow, with_digest: bool) -> dict[str, Any]:
+    digest = r.digest or {}
+    out = {"day": r.day, "from_tick": r.from_tick, "to_tick": r.to_tick, "headline": r.headline, "story": r.story,
+           "notable": r.notable or [], "narrator": r.narrator, "model": r.model,
+           "stats": digest.get("stats", {}), "economy": digest.get("economy", {}),
+           "highlights": (digest.get("highlights") or [])[:8],
+           "updated_at": r.updated_at.isoformat() if r.updated_at else None}
+    if with_digest:
+        out["digest"] = digest
+    return out
 
 
 def _event_dict(r: EventRow) -> dict[str, Any]:

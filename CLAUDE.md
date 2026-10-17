@@ -238,6 +238,24 @@ sender's visible intention at that tick and the participants' socialise / gift /
 trade / theft events. UI: `components/Conversations.tsx` (list + chat
 transcript) in the World tab's right panel, plus the map focus mode.
 
+### Chronicle (daily storyline)
+At the end of each day (`WorldRunner.step` → `Chronicler.on_tick` when
+`tick % ticks_per_day == 0`) a background task builds a **digest** of the day
+(`analysis/chronicle.py: build_digest`): stats, economy, ranked **highlights**
+(death 100, birth 80, theft 75, danger 65, distrust 62, friendship 60, belief 58,
+injury 55, shortage 50, group talk 50, existential talk 48, refusal 42, …),
+top conversations with excerpts, deduplicated thoughts (visible intentions and
+reflections), trust swings and each agent's nightfall state with changes since
+dawn (morning snapshot kept in memory). `template_story` writes a markdown
+storyline at once; then, if the world's provider is anthropic / openrouter /
+claude_code and `chronicle.narrator` isn't `template`, the LLM rewrites it from
+the digest (`narrator_request`, `NARRATIVE_SCHEMA`: headline, story, notable).
+Stored in `day_summaries` (one row per world and day). The backfill for older
+worlds only inserts missing days (`only_if_missing`), never overwriting a
+storyline written meanwhile (that race was a real bug). The day in progress is
+computed on request, not stored. WebSocket sends `{"type":"chronicle","day"}`
+when a day is written. UI: `components/ChroniclePage.tsx` (📖 Chronicle tab).
+
 ### Measurement and experiments
 - `analysis/behavior.py`: per-agent behaviour rates are correlated (Pearson)
   with **initial** traits under pre-registered trait→behaviour hypotheses,
@@ -428,7 +446,8 @@ context.
 - SQLite is the default (`sqlite:///./aisim.db`), with a write lock that
   serialises worker-thread writes. PostgreSQL uses `postgresql+psycopg://…`.
 - **Alembic migrations live inside the package**
-  (`aisim/persistence/migrations`: `0001_initial_schema.py`, `0002_message_read_tick.py`)
+  (`aisim/persistence/migrations`: `0001_initial_schema.py`, `0002_message_read_tick.py`,
+  `0003_day_summaries.py`)
   so installed (non-editable) deployments still find them. They run at
   startup. For a schema change, add a new revision there and update
   `models.py`; never edit an existing revision.
@@ -442,6 +461,8 @@ REST under `/api`:
 - `.../agents[/{aid}[/memories]]`, `.../events|messages|decisions|metrics|relationships|trust|traits|analysis|llm`
 - `.../conversations[?agent=]` (threads) and `.../conversation?agents=a,b,…` (transcript), see below
 - `.../credentials` (POST a provider key for that world; memory only)
+- `.../chronicle` (all days + today so far), `.../chronicle/{day}` (with digest),
+  `.../chronicle/{day}/narrate` (POST: rewrite with the LLM), `.../chronicle.md` (download)
 - `experiment-templates`, `experiments[/{id}[/cancel|/export]]`
 
 Mutating endpoints need `Authorization: Bearer` only when `AISIM_API_TOKEN` is
@@ -479,7 +500,7 @@ Uvicorn graceful shutdown is capped at 5 s.
   - `#setup` (default when no world) shows the setup page
   - `#experiments` shows the experiments page
   - `#<worldId>` opens a world; the last world is remembered in localStorage
-  - World tabs: World, Society, Mind, Analytics, LLM usage
+  - World tabs: World, 📖 Chronicle, Society, Mind, Analytics, LLM usage
 - `types.ts` mirrors backend views by hand. **When you change a view in
   `runtime/views.py`, update `types.ts`.**
 
@@ -610,7 +631,7 @@ variables.
 ## 7. Tests and CI
 
 ```bash
-cd backend && pytest -q                     # ~161 passed, 5 skipped (live LLM tests skip without a key)
+cd backend && pytest -q                     # ~166 passed, 5 skipped (live LLM tests skip without a key)
 TEST_DATABASE_URL=postgresql+psycopg://… pytest -q tests/test_api_persistence.py tests/test_experiments.py
 ANTHROPIC_API_KEY=… pytest -m live_llm tests/test_llm_live.py   # real API, costs money
 cd frontend && npm run typecheck && npm test && npm run build
@@ -620,7 +641,8 @@ cd frontend && npm run typecheck && npm test && npm run build
   determinism), `test_social_and_models`, `test_llm_decisions` (offline LLM
   pipeline: schema, budgets, timeouts, boundaries, request shape),
   `test_api_persistence` (API, WS, restore/truncate), `test_experiments`,
-  `test_analysis`, `test_setup`, `test_appearance`, `test_providers` (OpenRouter via a mock transport, Claude CLI via `tests/fixtures/fake_claude.py`, key handling), `test_llm_live` (marked
+  `test_analysis`, `test_setup`, `test_appearance`, `test_providers` (OpenRouter via a mock transport, Claude CLI via `tests/fixtures/fake_claude.py`, key handling),
+  `test_conversations`, `test_chronicle` (digest, template, LLM narrator via a mock transport, API), `test_llm_live` (marked
   `live_llm`).
 - `tests/conftest.py` has helpers: `make_sim(overrides)`, `place(sim, agent,
   type)`, `run_action(sim, agent_id, proposal)` for single-tick rule tests.

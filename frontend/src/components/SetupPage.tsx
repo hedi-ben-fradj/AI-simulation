@@ -40,6 +40,7 @@ interface Settings {
   max_world_spend: number | null;
   claude_session_mode: 'per_agent' | 'fresh';
   decision_timeout: number | null;
+  chronicle_narrator: 'auto' | 'template';
 }
 
 type Provider = 'none' | 'mock' | 'anthropic' | 'openrouter' | 'claude_code';
@@ -52,7 +53,7 @@ const DEFAULTS: Settings = {
   personality_distribution: 'normal', trait_means: {}, days: null, seed: 42, world_size: 'auto',
   communication_cost: 'normal', trust_prior: 'neutral', allow_theft: true, hazards: 'low', replace_dead: false,
   existential_goal: true, provider: 'none', llm_agents: null, model: null, effort: null, max_world_spend: 2,
-  claude_session_mode: 'per_agent', decision_timeout: null,
+  claude_session_mode: 'per_agent', decision_timeout: null, chronicle_narrator: 'auto',
 };
 
 const LEVELS = ['very_scarce', 'scarce', 'almost_scarce', 'normal', 'almost_abundant', 'abundant', 'very_abundant'];
@@ -342,6 +343,11 @@ export function SetupPage({ worlds, onCreated, onOpenWorld }: Props) {
                 <NumberInput label="Wait per tick (seconds)" placeholder="120" min={5} max={600} value={s.decision_timeout ?? ''}
                   onChange={(v) => set('decision_timeout', v === '' ? null : Number(v))} />
               </Group>
+            )}
+            {(s.provider === 'anthropic' || s.provider === 'openrouter' || s.provider === 'claude_code') && (
+              <Switch label="Let the LLM write the daily storyline (Chronicle tab)" checked={s.chronicle_narrator === 'auto'}
+                onChange={(e) => set('chronicle_narrator', e.currentTarget.checked ? 'auto' : 'template')}
+                description="One short request at the end of each simulated day. Off: the built-in writer summarises each day for free." />
             )}
             {s.provider === 'claude_code' && (
               <Text size="xs" c="dimmed">

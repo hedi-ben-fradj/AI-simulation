@@ -1,7 +1,7 @@
 // Thin typed client for the backend REST API. The browser never talks to an
 // LLM provider; all model calls happen server-side.
 import type {
-  AgentDetail, ConversationDetail, ConversationThread, Decision, Message, Metrics, Preset, SimEvent, WorldSummary, WorldView,
+  AgentDetail, Chronicle, ChronicleDay, ConversationDetail, ConversationThread, Decision, Message, Metrics, Preset, SimEvent, WorldSummary, WorldView,
 } from './types';
 
 const TOKEN_KEY = 'aisim.apiToken';
@@ -63,6 +63,10 @@ export const api = {
   pause: (id: string) => post<WorldView>(`/api/worlds/${id}/pause`),
   step: (id: string, count = 1) => post<WorldView>(`/api/worlds/${id}/step`, { count }),
   speed: (id: string, speed: number) => post<WorldView>(`/api/worlds/${id}/speed`, { speed }),
+  chronicle: (id: string) => request<Chronicle>(`/api/worlds/${id}/chronicle`),
+  chronicleDay: (id: string, day: number) => request<ChronicleDay>(`/api/worlds/${id}/chronicle/${day}`),
+  narrateDay: (id: string, day: number) => post<ChronicleDay>(`/api/worlds/${id}/chronicle/${day}/narrate`),
+  chronicleMarkdownUrl: (id: string) => `/api/worlds/${id}/chronicle.md`,
   conversations: (id: string, agent?: string | null) =>
     request<{ conversations: ConversationThread[]; gap_ticks: number; tick: number }>(
       `/api/worlds/${id}/conversations${agent ? `?agent=${encodeURIComponent(agent)}` : ''}`),

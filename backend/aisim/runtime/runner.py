@@ -15,6 +15,7 @@ from typing import Any
 
 from ..engine.simulation import Simulation, TickResult
 from .deciders import Decider
+from .chronicle import Chronicler
 from .hub import Hub
 from .views import tick_payload, world_view
 
@@ -39,6 +40,7 @@ class WorldRunner:
         self._task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
         self._unsaved: list[tuple[TickResult, list[dict[str, Any]]]] = []
+        self.chronicle = Chronicler(self)
 
     @property
     def world_id(self) -> str:
@@ -87,6 +89,8 @@ class WorldRunner:
                 log.warning("world %s tick %d was slow: %.1fs (llm queue %s)", self.world_id, result.tick,
                             self.last_tick_seconds, stats.get("queue_depth"))
             await self.hub.publish(self.world_id, tick_payload(sim, result, self.status, self.speed, self.extra()))
+            if self.status != "error":
+                self.chronicle.on_tick()
             return result
 
     async def _flush(self, spend: float | None) -> None:
@@ -185,4 +189,5 @@ class WorldRunner:
             self.status = "running"
             await self._persist_status()
             self.status = "paused"
+        await self.chronicle.close()
         await self.decider.close()

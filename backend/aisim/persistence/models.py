@@ -208,6 +208,28 @@ class LLMUsageRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class DaySummaryRow(Base):
+    """The chronicle: one storyline per simulated day (see analysis/chronicle.py)."""
+
+    __tablename__ = "day_summaries"
+    __table_args__ = (Index("ix_day_summaries_world_day", "world_id", "day", unique=True),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    world_id: Mapped[str] = mapped_column(ForeignKey("worlds.id", ondelete="CASCADE"))
+    day: Mapped[int] = mapped_column(Integer)
+    from_tick: Mapped[int] = mapped_column(Integer)
+    to_tick: Mapped[int] = mapped_column(Integer)
+    headline: Mapped[str] = mapped_column(Text)
+    story: Mapped[str] = mapped_column(Text)
+    notable: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    # Who wrote the story: "template" (built-in) or "llm"; model is the LLM's ID.
+    narrator: Mapped[str] = mapped_column(String(20), default="template")
+    model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    digest: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class ExperimentRow(Base):
     __tablename__ = "experiments"
 

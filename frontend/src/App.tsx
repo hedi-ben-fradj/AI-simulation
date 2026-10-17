@@ -15,6 +15,7 @@ import { Analytics } from './components/Analytics';
 import { LLMPanel } from './components/LLMPanel';
 import { SocietyPanel } from './components/SocietyPanel';
 import { ConversationList, ConversationView } from './components/Conversations';
+import { ChroniclePage } from './components/ChroniclePage';
 import { MindPanel } from './components/MindPanel';
 import { ExperimentsPage } from './components/ExperimentsPage';
 import type { WorldSummary, WorldView } from './types';
@@ -240,6 +241,7 @@ export default function App() {
           <Tabs value={tab} onChange={setTab} keepMounted={false}>
             <Tabs.List mb="sm">
               <Tabs.Tab value="world">World</Tabs.Tab>
+              <Tabs.Tab value="chronicle">📖 Chronicle</Tabs.Tab>
               <Tabs.Tab value="society">Society</Tabs.Tab>
               <Tabs.Tab value="mind">Mind</Tabs.Tab>
               <Tabs.Tab value="analytics">Analytics</Tabs.Tab>
@@ -316,6 +318,12 @@ export default function App() {
                   </Card>
                 </Grid.Col>
               </Grid>
+            </Tabs.Panel>
+
+            <Tabs.Panel value="chronicle">
+              <ChroniclePage worldId={world.id} worldName={world.name} tick={world.tick} version={stream.chronicleVersion}
+                agents={world.agents} onOpenConversation={openConversation}
+                onSelectAgent={(id) => { inspect(id); setTab('world'); }} />
             </Tabs.Panel>
 
             <Tabs.Panel value="society">

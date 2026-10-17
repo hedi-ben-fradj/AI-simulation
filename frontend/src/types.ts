@@ -292,3 +292,68 @@ export interface ConversationDetail {
   events: (SimEvent & { time: string })[];
   tick: number;
 }
+
+/** One highlight of a day: something unusual or interesting (backend analysis/chronicle.py). */
+export interface ChronicleHighlight {
+  kind: string;
+  score: number;
+  text: string;
+  agents: string[];
+  quote: string | null;
+}
+
+export interface ChronicleAgentStatus {
+  id: string;
+  name: string;
+  alive: boolean;
+  controller: string;
+  health: number;
+  hunger: number;
+  energy: number;
+  tokens: number;
+  food: number;
+  mood: string;
+  action: string;
+  sprite: string;
+  change: { health?: number; tokens?: number; hunger?: number };
+  hours: Record<string, number>;
+  messages_sent: number;
+  messages_received: number;
+}
+
+export interface ChronicleDigest {
+  day: number;
+  complete: boolean;
+  stats: Record<string, number>;
+  economy: Record<string, any>;
+  highlights: ChronicleHighlight[];
+  conversations: { participants: string[]; names: string[]; message_count: number; group: boolean; existential: boolean;
+    excerpt: { from: string; to: string; text: string; tick: number }[] }[];
+  thoughts: { agent: string; agent_id: string; tick: number; text: string; source: string; existential: boolean }[];
+  trust_swings: { from: string; to: string; before: number; after: number }[];
+  agents: ChronicleAgentStatus[];
+}
+
+export interface ChronicleDay {
+  day: number;
+  from_tick: number;
+  to_tick: number;
+  headline: string;
+  story: string;
+  notable: string[];
+  narrator: 'template' | 'llm';
+  model: string | null;
+  stats: Record<string, number>;
+  economy: Record<string, any>;
+  highlights: ChronicleHighlight[];
+  in_progress?: boolean;
+  digest?: ChronicleDigest;
+}
+
+export interface Chronicle {
+  days: ChronicleDay[];
+  today: ChronicleDay | null;
+  ticks_per_day: number;
+  narrator: { mode: string; llm: boolean; model: string | null };
+  tick: number;
+}

@@ -57,6 +57,17 @@ claude -p --output-format json --model <m> --system-prompt <rules> --json-schema
 `scripts/llm_smoke_test.py` runs a small chatty world against any provider and
 prints every decision, message, fallback and the cost.
 
+## The chronicler
+
+Besides the agents, the world's LLM can write the **daily chronicle**: one
+request per simulated day with the day's digest (no agent prompts or private
+reasoning beyond the visible intentions in the digest), returning a headline, a
+storyline and up to five notable points as structured output. It is logged in
+`llm_usage` as agent `chronicler`, counts toward the world's spend cap, and is
+skipped (template only) when the cap is reached, the key is missing, or
+`chronicle.narrator: template`. In Claude subscription mode the chronicler has
+its own Claude Code conversation, so it remembers the earlier chapters.
+
 ## Enabling
 
 ```yaml

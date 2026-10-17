@@ -7,6 +7,7 @@ the frontend never calls an LLM directly.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -15,7 +16,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 
 from ..config import list_presets, load_config
 from ..config.levels import describe_economy
@@ -336,6 +337,63 @@ def create_app(settings: Settings | None = None, decider_factory=None) -> FastAP
         intentions = r.intentions(world_id, {(m["sender_id"], m["sent_tick"]) for m in messages})
         events = r.events_among(world_id, ids, CONVERSATION_EVENT_TYPES)
         return conversation_view(runner.sim, ids, messages, intentions, events)
+
+    # ------------------------------------------------------------ chronicle
+    @app.get("/api/worlds/{world_id}/chronicle")
+    async def chronicle(world_id: str, mgr: WorldManager = Depends(manager), r: Repository = Depends(repo)):
+        """Every finished day's storyline (oldest first) and the day in progress so far."""
+        runner = await runner_or_404(world_id, mgr)
+        await asyncio.to_thread(runner.chronicle.backfill)
+        days = await asyncio.to_thread(r.day_summaries, world_id)
+        today = await asyncio.to_thread(runner.chronicle.today)
+        if today is not None:
+            today.pop("digest", None)
+        provider = runner.chronicle.narrator_provider()
+        return {"days": days, "today": today, "ticks_per_day": runner.sim.config.simulation.ticks_per_day,
+                "narrator": {"mode": runner.sim.config.chronicle.narrator, "llm": provider is not None,
+                             "model": provider.model if provider else None},
+                "tick": runner.sim.world.tick}
+
+    @app.get("/api/worlds/{world_id}/chronicle.md")
+    async def chronicle_markdown(world_id: str, mgr: WorldManager = Depends(manager), r: Repository = Depends(repo)):
+        """The whole chronicle as one Markdown document, to read anywhere."""
+        runner = await runner_or_404(world_id, mgr)
+        await asyncio.to_thread(runner.chronicle.backfill)
+        days = await asyncio.to_thread(r.day_summaries, world_id)
+        lines = [f"# {runner.sim.world.name} — chronicle", ""]
+        for d in days:
+            lines += [f"## Day {d['day']}: {d['headline']}", "", d["story"], ""]
+            if d["notable"]:
+                lines += ["Notable:", *[f"- {n}" for n in d["notable"]], ""]
+        name = "".join(c if c.isalnum() else "-" for c in runner.sim.world.name).strip("-") or "world"
+        return PlainTextResponse("\n".join(lines), media_type="text/markdown; charset=utf-8",
+                                 headers={"Content-Disposition": f'attachment; filename="{name}-chronicle.md"'})
+
+    @app.get("/api/worlds/{world_id}/chronicle/{day}")
+    async def chronicle_day(world_id: str, day: int, mgr: WorldManager = Depends(manager),
+                            r: Repository = Depends(repo)):
+        """One day with its full digest (statuses, conversations, thoughts, highlights)."""
+        runner = await runner_or_404(world_id, mgr)
+        today = await asyncio.to_thread(runner.chronicle.today)
+        if today is not None and today["day"] == day:
+            return today
+        await asyncio.to_thread(runner.chronicle.backfill)
+        found = await asyncio.to_thread(r.day_summary, world_id, day)
+        if found is None:
+            raise HTTPException(404, "no chronicle for that day yet")
+        return found
+
+    @app.post("/api/worlds/{world_id}/chronicle/{day}/narrate", dependencies=[Depends(require_token)])
+    async def chronicle_narrate(world_id: str, day: int, mgr: WorldManager = Depends(manager)):
+        """(Re)write a finished day's storyline with the world's LLM."""
+        runner = await runner_or_404(world_id, mgr)
+        await asyncio.to_thread(runner.chronicle.backfill)
+        try:
+            return await runner.chronicle.narrate(day)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc))
+        except RuntimeError as exc:
+            raise HTTPException(409, str(exc))
 
     @app.get("/api/worlds/{world_id}/decisions")
     async def decisions(world_id: str, agent: str | None = None, limit: int = Query(50, le=1000),

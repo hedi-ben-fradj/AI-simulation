@@ -80,6 +80,8 @@ class SetupSettings(BaseModel):
     effort: Literal["low", "medium", "high"] | None = None
     max_world_spend: float | None = Field(None, ge=0, le=1000)
     claude_session_mode: Literal["per_agent", "fresh"] = "per_agent"
+    # Who writes the daily storyline: the world's LLM when it has one (auto), or the built-in template.
+    chronicle_narrator: Literal["auto", "template"] = "auto"
     # Seconds a tick waits for decisions (the CLI needs longer than an API call).
     decision_timeout: float | None = Field(None, ge=5, le=600)
     start: bool = True
@@ -132,6 +134,7 @@ def settings_to_overrides(s: SetupSettings) -> dict[str, Any]:
         "social": {"allow_theft": s.allow_theft},
         "existential_goal": {"enabled": s.existential_goal},
         "llm": {"provider": s.provider, "llm_agents": s.llm_agents},
+        "chronicle": {"narrator": s.chronicle_narrator},
     }
     llm = overrides["llm"]
     llm["model"] = s.model or DEFAULT_MODELS.get(s.provider, "claude-opus-5-5")

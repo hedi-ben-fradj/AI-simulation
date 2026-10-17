@@ -230,6 +230,19 @@ print(result.metrics)
   curious/risk-taking, warrior = ambitious/competitive, soldier = persistent,
   villager = social/kind, guard = honest/impulsive, orc = criminal tendency);
   agents with balanced personalities get a varied human look (never an orc).
+* **Read the chronicle** — the **📖 Chronicle** tab has a storyline for every
+  simulated day, written when the day ends: the state of the village (food,
+  health, moods), the conversations with quotes, what agents were thinking,
+  relationships made and broken, and anything unusual (thefts, deaths, refused
+  pleas for help, beliefs about existence, unanswered messages, plans the world
+  refused). Each day also lists its highlights, every villager's status at
+  nightfall with the day's changes, the conversations (open any of them as a
+  chat) and the agents' thoughts. **Key moments** collects the most important
+  events across all days; **Whole story** shows every day as one continuous
+  read, and **Download (.md)** saves it. With an LLM world the day is written by
+  the model (one short request per day; turn it off on the setup page); otherwise
+  a built-in writer does it for free. Leave a world running overnight and read
+  what happened in the morning.
 * **Follow conversations** — the **💬 Conversations** panel (next to the villager
   list) lists who has been talking: pairs, and group conversations when several
   agents really talk among themselves. Open one, or pick any two or more agents,
