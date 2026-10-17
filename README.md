@@ -230,6 +230,16 @@ print(result.metrics)
   curious/risk-taking, warrior = ambitious/competitive, soldier = persistent,
   villager = social/kind, guard = honest/impulsive, orc = criminal tendency);
   agents with balanced personalities get a varied human look (never an orc).
+* **Follow conversations** — the **💬 Conversations** panel (next to the villager
+  list) lists who has been talking: pairs, and group conversations when several
+  agents really talk among themselves. Open one, or pick any two or more agents,
+  to read every message as a chat: who said what to whom and when, whether the
+  recipient read it (or it expired unread), what the sender intended at the time,
+  and their meetings, gifts, trades and thefts in between. The map focuses on
+  them: they're highlighted and followed, everyone else is dimmed, and each new
+  message flies as a letter from sender to recipient. A message line in the event
+  feed, the **💬 Conversations** button in an agent's inspector and the Society
+  tab all lead there.
 * **Inspect agents** — state, needs, temporary emotions, goals, time allocation,
   personality (and its drift), relationships and the trust evidence behind them,
   memories, every decision (LLM, rule or fallback, with rejection reasons), and

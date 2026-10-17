@@ -32,6 +32,8 @@ export interface AgentBrief {
   food: number;
   existential_active: boolean;
   said: string | null;
+  /** Recipient of what the agent said this tick. */
+  said_to?: string | null;
   /** Character sprite sheet (see backend/aisim/runtime/appearance.py). */
   sprite?: string;
 }
@@ -244,4 +246,49 @@ export interface Preset {
   id: string;
   name: string;
   description: string;
+}
+
+/** A detected conversation (backend analysis/conversations.py). */
+export interface ConversationThread {
+  id: string;
+  participants: string[];
+  names: string[];
+  first_tick: number;
+  last_tick: number;
+  time: string;
+  last_time: string;
+  message_count: number;
+  messages_by_sender: Record<string, number>;
+  group: boolean;
+  existential: boolean;
+  last_message: { id: string; sender_id: string; recipient_id: string; content: string; sent_tick: number };
+}
+
+export type MessageStatus = 'read' | 'sending' | 'unread' | 'undelivered' | 'never_read';
+
+export interface ConversationMessage {
+  id: string;
+  sender_id: string;
+  recipient_id: string;
+  sender_name: string;
+  recipient_name: string;
+  content: string;
+  tokens: number;
+  token_cost: number;
+  sent_tick: number;
+  deliver_tick: number;
+  read_tick: number | null;
+  read_time: string | null;
+  time: string;
+  status: MessageStatus;
+  existential: boolean;
+  /** The sender's visible intention when it sent the message. */
+  intention: string | null;
+}
+
+export interface ConversationDetail {
+  participants: { id: string; name: string; alive: boolean; controller: string; sprite: string }[];
+  messages: ConversationMessage[];
+  events: (SimEvent & { time: string })[];
+  tick: number;
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Badge, Card, Grid, Group, ScrollArea, Select, Stack, Table, Text, Tooltip, useComputedColorScheme,
+  Badge, Button, Card, Grid, Group, ScrollArea, Select, Stack, Table, Text, Tooltip, useComputedColorScheme,
 } from '@mantine/core';
 import { api } from '../api';
 import type { AgentBrief, Message, Metrics } from '../types';
@@ -14,6 +14,8 @@ interface Props {
   messages: Message[];
   latest: Metrics | undefined;
   onSelectAgent: (id: string) => void;
+  /** Open a conversation as a chat transcript on the World tab. */
+  onOpenConversation?: (participants: string[]) => void;
 }
 
 type Rel = { agent_id: string; other_id: string; trust: number; familiarity: number; affinity: number };
@@ -94,7 +96,7 @@ function Network({ agents, rels, scheme, onSelect }: { agents: AgentBrief[]; rel
   );
 }
 
-export function SocietyPanel({ worldId, tick, agents, messages, latest, onSelectAgent }: Props) {
+export function SocietyPanel({ worldId, tick, agents, messages, latest, onSelectAgent, onOpenConversation }: Props) {
   const scheme = useComputedColorScheme('light');
   const [rels, setRels] = useState<Rel[]>([]);
   const [pair, setPair] = useState<string | null>(null);
@@ -175,13 +177,20 @@ export function SocietyPanel({ worldId, tick, agents, messages, latest, onSelect
           <Card withBorder padding="sm" mt="sm">
             <Group justify="space-between" mb={4}>
               <Text fw={600} size="sm">Conversations</Text>
-              <Select size="xs" placeholder="All messages" data={pairOptions} value={pair} onChange={setPair} clearable w={240} />
+              <Group gap="xs">
+                <Select size="xs" placeholder="All messages" data={pairOptions} value={pair} onChange={setPair} clearable w={240} />
+                {pair && onOpenConversation && (
+                  <Button size="compact-xs" onClick={() => onOpenConversation(pair.split('|'))}>💬 Open as chat</Button>
+                )}
+              </Group>
             </Group>
             <ScrollArea h={260}>
               <Stack gap={4}>
                 {shownMessages.length === 0 && <Text size="xs" c="dimmed">No messages yet.</Text>}
                 {shownMessages.map((m) => (
-                  <Text key={m.id} size="xs">
+                  <Text key={m.id} size="xs" style={{ cursor: onOpenConversation ? 'pointer' : undefined }}
+                    title={onOpenConversation ? 'Open this conversation' : undefined}
+                    onClick={() => onOpenConversation?.([m.sender_id, m.recipient_id])}>
                     <Text span c="dimmed" size="xs">t{m.sent_tick} </Text>
                     <Text span fw={600} size="xs">{names[m.sender_id] ?? m.sender_id} → {names[m.recipient_id] ?? m.recipient_id}: </Text>
                     {m.content}

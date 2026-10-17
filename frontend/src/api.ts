@@ -1,6 +1,8 @@
 // Thin typed client for the backend REST API. The browser never talks to an
 // LLM provider; all model calls happen server-side.
-import type { AgentDetail, Decision, Message, Metrics, Preset, SimEvent, WorldSummary, WorldView } from './types';
+import type {
+  AgentDetail, ConversationDetail, ConversationThread, Decision, Message, Metrics, Preset, SimEvent, WorldSummary, WorldView,
+} from './types';
 
 const TOKEN_KEY = 'aisim.apiToken';
 
@@ -61,6 +63,11 @@ export const api = {
   pause: (id: string) => post<WorldView>(`/api/worlds/${id}/pause`),
   step: (id: string, count = 1) => post<WorldView>(`/api/worlds/${id}/step`, { count }),
   speed: (id: string, speed: number) => post<WorldView>(`/api/worlds/${id}/speed`, { speed }),
+  conversations: (id: string, agent?: string | null) =>
+    request<{ conversations: ConversationThread[]; gap_ticks: number; tick: number }>(
+      `/api/worlds/${id}/conversations${agent ? `?agent=${encodeURIComponent(agent)}` : ''}`),
+  conversation: (id: string, agents: string[]) =>
+    request<ConversationDetail>(`/api/worlds/${id}/conversation?agents=${agents.map(encodeURIComponent).join(',')}`),
   // The key is kept in the server's memory for this world only; the response never contains it.
   setCredentials: (id: string, apiKey: string) =>
     post<{ llm: Record<string, any> }>(`/api/worlds/${id}/credentials`, { api_key: apiKey }),

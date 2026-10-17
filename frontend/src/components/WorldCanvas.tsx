@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActionIcon, Group, Tooltip } from '@mantine/core';
+import { ActionIcon, Group, Text as MText, Tooltip } from '@mantine/core';
 import {
   Application, Container, FederatedPointerEvent, Graphics, RenderTexture, Sprite, Text, TextStyle, Texture,
 } from 'pixi.js';
@@ -20,6 +20,9 @@ interface Props {
   /** Expected time between ticks; movement is interpolated over (most of) it. */
   tickIntervalMs: number;
   thoughts: ThoughtMode;
+  /** Agents of the conversation in focus: highlighted and followed; everyone else is dimmed. */
+  focus?: string[] | null;
+  onClearFocus?: () => void;
 }
 
 const FONT = '"Pixelify Sans", system-ui, sans-serif';
@@ -28,6 +31,8 @@ const THOUGHT_MS = 3000;
 const MAX_THOUGHTS = 3;
 const CROWDED_AGENTS = 40;
 const HURT_MS = 350;
+const ENVELOPE_MS = 1100;
+const DIMMED_ALPHA = 0.3;
 // Feet sit at y = 23 of the 32px frame.
 const ANCHOR_Y = 23 / FRAME;
 // The initial view zooms in at most this far (screen px per sprite px).
@@ -47,11 +52,27 @@ function crowdOffset(id: string, index: number, count: number): { dx: number; dy
 
 const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
 
+/** A letter flying from sender to recipient when a message is sent. */
+interface Envelope {
+  g: Graphics;
+  from: string;
+  to: string;
+  start: number;
+}
+
+function makeEnvelope(): Graphics {
+  const g = new Graphics();
+  g.rect(-4, -3, 8, 6).fill({ color: 0xfff8e7 }).stroke({ width: 1, color: 0x5c3a1e });
+  g.moveTo(-4, -3).lineTo(0, 0.5).lineTo(4, -3).stroke({ width: 1, color: 0x5c3a1e });
+  return g;
+}
+
 interface AgentNode {
   data: AgentBrief;
   body: Container; // world-space: shadow, halo, selection, sprite
   sprite: Sprite;
   ring: Graphics;
+  focusRing: Graphics;
   halo: Graphics;
   label: Container; // screen-space
   name: Text;
@@ -110,6 +131,11 @@ class Scene {
   objects = new Container();
   darkness = new Graphics();
   lights = new Container();
+  fx = new Container(); // world space, above everything: message envelopes
+  envelopes: Envelope[] = [];
+  focus: Set<string> | null = null;
+  focusKey = '';
+  followGroup = false;
   overlay = new Container(); // screen space
   locLabels = new Container();
   agentLabels = new Container();
@@ -138,7 +164,7 @@ class Scene {
     this.onSelect = onSelect;
     this.objects.sortableChildren = true;
     this.lights.blendMode = 'add';
-    this.root.addChild(this.ground, this.objects, this.darkness, this.lights);
+    this.root.addChild(this.ground, this.objects, this.darkness, this.lights, this.fx);
     this.overlay.addChild(this.locLabels, this.agentLabels, this.bubbles);
     app.stage.addChild(this.root, this.overlay);
     app.stage.eventMode = 'static';
@@ -153,6 +179,7 @@ class Scene {
       if (!this.drag.moved && Math.hypot(dx, dy) < 4) return;
       this.drag.moved = true;
       this.follow = false;
+      this.followGroup = false;
       const s = this.scale();
       this.center = { x: this.drag.cx - dx / s, y: this.drag.cy - dy / s };
       this.clampCenter();
@@ -195,7 +222,7 @@ class Scene {
   }
 
   /** Default view: close enough to see the characters, framing where the villagers are. */
-  frameVillagers(agents: AgentBrief[]) {
+  frameVillagers(agents: AgentBrief[], maxScale = DEFAULT_MAX_SCALE) {
     const alive = agents.filter((a) => a.alive);
     const pts = (alive.length ? alive : agents).map((a) => ({ x: a.x * UNIT, y: a.y * UNIT }));
     this.follow = false;
@@ -210,10 +237,30 @@ class Scene {
     const y0 = Math.min(...pts.map((p) => p.y)) - pad;
     const y1 = Math.max(...pts.map((p) => p.y)) + pad;
     const { width, height } = this.app.screen;
-    const target = Math.max(this.cover, Math.min(DEFAULT_MAX_SCALE, width / (x1 - x0), height / (y1 - y0)));
+    const target = Math.max(this.cover, Math.min(maxScale, width / (x1 - x0), height / (y1 - y0)));
     this.zoom = Math.max(1, Math.min(8, target / this.fit));
     this.center = { x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
     this.clampCenter();
+  }
+
+  /** Focus on a conversation's agents (or clear the focus with null). */
+  setFocus(ids: string[] | null) {
+    const key = ids ? [...ids].sort().join(',') : '';
+    if (key === this.focusKey) return;
+    this.focusKey = key;
+    this.focus = ids && ids.length ? new Set(ids) : null;
+    this.followGroup = !!this.focus;
+    if (this.focus && this.world) {
+      this.follow = false;
+      this.frameVillagers(this.world.agents.filter((a) => this.focus!.has(a.id)), 3);
+    }
+    for (const n of this.agents.values()) this.styleAgent(n);
+  }
+
+  spawnEnvelope(from: string, to: string, now: number) {
+    const g = makeEnvelope();
+    this.fx.addChild(g);
+    this.envelopes.push({ g, from, to, start: now });
   }
 
   zoomAt(factor: number, sx?: number, sy?: number) {
@@ -374,7 +421,13 @@ class Scene {
       n.lastHealth = a.health;
       n.data = a;
       this.styleAgent(n);
-      if (a.said && a.said !== n.lastSaid) this.setBubble(n, 'speech', a.said, now + SPEECH_MS);
+      if (a.said && a.said !== n.lastSaid) {
+        this.setBubble(n, 'speech', a.said, now + SPEECH_MS);
+        const to = a.said_to;
+        if (to && this.agents.has(to) && (!this.focus || (this.focus.has(a.id) && this.focus.has(to)))) {
+          this.spawnEnvelope(a.id, to, now);
+        }
+      }
       n.lastSaid = a.said;
       const wantThought = thoughts === 'all' || (thoughts === 'selected' && a.id === selectedId);
       const active = Array.from(this.agents.values()).filter((x) => x.thought).length;
@@ -399,9 +452,10 @@ class Scene {
     const shadow = new Graphics().ellipse(0, 0, 6, 2.5).fill({ color: 0x000000, alpha: 0.3 });
     const halo = new Graphics().ellipse(0, 0, 10, 4).fill({ color: 0xb197fc, alpha: 0.35 });
     const ring = new Graphics().ellipse(0, 0, 9, 3.5).stroke({ width: 1.5, color: 0xfab005 });
+    const focusRing = new Graphics().ellipse(0, 0, 11, 4.5).stroke({ width: 1.5, color: 0x38d9a9 });
     const sprite = new Sprite(frameTexture(a.sprite ?? 'human-worker-red', 0, 0));
     sprite.anchor.set(0.5, ANCHOR_Y);
-    body.addChild(halo, shadow, ring, sprite);
+    body.addChild(halo, shadow, focusRing, ring, sprite);
     body.eventMode = 'static';
     body.cursor = 'pointer';
     body.hitArea = { contains: (x: number, y: number) => x > -9 && x < 9 && y > -16 && y < 3 };
@@ -425,7 +479,7 @@ class Scene {
     this.agentLabels.addChild(label);
     const pos = { x: a.x * UNIT, y: a.y * UNIT };
     return {
-      data: a, body, sprite, ring, halo, label, name, dot, bar, emote,
+      data: a, body, sprite, ring, focusRing, halo, label, name, dot, bar, emote,
       from: { ...pos }, to: { ...pos }, pos: { ...pos }, start: 0, duration: 1, row: 0, hurtUntil: 0,
       speech: null, speechUntil: 0, thought: null, thoughtUntil: 0, lastSaid: null, lastIntention: null,
       lastHealth: a.health,
@@ -436,6 +490,8 @@ class Scene {
     const a = n.data;
     const selected = a.id === this.selectedId;
     n.ring.visible = selected;
+    n.focusRing.visible = !!this.focus?.has(a.id);
+    n.body.alpha = this.focus && !this.focus.has(a.id) ? DIMMED_ALPHA : 1;
     n.halo.visible = a.alive && a.existential_active;
     n.sprite.tint = a.alive ? 0xffffff : 0x8a8a8a;
     n.sprite.alpha = a.alive ? 1 : 0.75;
@@ -481,6 +537,15 @@ class Scene {
       };
       this.clampCenter();
     }
+    if (this.followGroup && this.focus) {
+      const members = [...this.focus].map((id) => this.agents.get(id)).filter((n): n is AgentNode => !!n);
+      if (members.length) {
+        const cx = members.reduce((sum, n) => sum + n.pos.x, 0) / members.length;
+        const cy = members.reduce((sum, n) => sum + n.pos.y, 0) / members.length;
+        this.center = { x: this.center.x + (cx - this.center.x) * 0.06, y: this.center.y + (cy - this.center.y) * 0.06 };
+        this.clampCenter();
+      }
+    }
     const { width, height } = this.app.screen;
     this.root.scale.set(s);
     this.root.position.set(Math.round(width / 2 - this.center.x * s), Math.round(height / 2 - this.center.y * s));
@@ -521,7 +586,8 @@ class Scene {
 
       // Screen-space label above the head.
       const head = this.worldToScreen(n.pos.x, n.pos.y - 16);
-      const showLabel = !crowded || a.id === this.selectedId;
+      const dimmed = !!this.focus && !this.focus.has(a.id);
+      const showLabel = !dimmed && (!crowded || a.id === this.selectedId || !!this.focus);
       n.label.visible = showLabel;
       n.label.position.set(Math.round(head.x), Math.round(head.y));
       n.name.position.set(0, -6);
@@ -538,6 +604,7 @@ class Scene {
         } else {
           n.speech.position.set(head.x, head.y - above);
           n.speech.alpha = Math.min(1, (n.speechUntil - now) / 600);
+          n.speech.visible = !dimmed;
         }
       }
       if (n.thought) {
@@ -548,15 +615,39 @@ class Scene {
         } else {
           n.thought.position.set(head.x, head.y - above - (n.speech ? n.speech.height + 4 : 0));
           n.thought.alpha = Math.min(0.95, (n.thoughtUntil - now) / 600);
+          n.thought.visible = !dimmed;
         }
       }
     }
+    this.animateEnvelopes(now);
     this.separateBubbles();
+  }
+
+  animateEnvelopes(now: number) {
+    // Never smaller than ~14 screen px, whatever the zoom.
+    const size = Math.max(1, 14 / (8 * this.scale()));
+    this.envelopes = this.envelopes.filter((e) => {
+      const from = this.agents.get(e.from);
+      const to = this.agents.get(e.to);
+      const t = (now - e.start) / ENVELOPE_MS;
+      if (!from || !to || t >= 1) {
+        e.g.destroy();
+        return false;
+      }
+      const k = ease(Math.max(0, t));
+      const x = from.pos.x + (to.pos.x - from.pos.x) * k;
+      const y = from.pos.y - 14 + (to.pos.y - from.pos.y) * k - Math.sin(Math.PI * k) * 14;
+      e.g.position.set(x, y);
+      e.g.rotation = Math.sin(t * Math.PI * 4) * 0.15;
+      e.g.scale.set(size);
+      e.g.alpha = t > 0.85 ? (1 - t) / 0.15 : 1;
+      return true;
+    });
   }
 
   /** Nudge overlapping bubbles upwards so every line stays readable. */
   separateBubbles() {
-    const items = (this.bubbles.children as Container[]).map((b) => {
+    const items = (this.bubbles.children as Container[]).filter((b) => b.visible).map((b) => {
       const { w, h } = (b as any).__size as { w: number; h: number };
       return { b, w, h, x: b.position.x, bottom: b.position.y };
     });
@@ -585,7 +676,7 @@ class Scene {
   }
 }
 
-export function WorldCanvas({ world, selectedId, onSelect, tickIntervalMs, thoughts }: Props) {
+export function WorldCanvas({ world, selectedId, onSelect, tickIntervalMs, thoughts, focus = null, onClearFocus }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<Scene | null>(null);
   const latest = useRef({ world, selectedId, tickIntervalMs, thoughts });
@@ -637,10 +728,33 @@ export function WorldCanvas({ world, selectedId, onSelect, tickIntervalMs, thoug
     if (sceneRef.current) sceneRef.current.follow = follow && !!selectedId;
   }, [follow, selectedId, ready]);
 
+  const focusKey = focus ? [...focus].sort().join(',') : '';
+  useEffect(() => {
+    if (focus?.length) setFollow(false);
+    sceneRef.current?.setFocus(focus?.length ? focus : null);
+  }, [focusKey, ready]);
+  const focusNames = (focus ?? []).map((id) => world?.agents.find((a) => a.id === id)?.name ?? id);
+
   const zoom = (f: number) => sceneRef.current?.zoomAt(f);
   return (
     <div style={{ position: 'absolute', inset: 0 }}>
       <div ref={hostRef} style={{ position: 'absolute', inset: 0 }} aria-label="World map" role="img" />
+      {focusNames.length > 0 && (
+        <Group gap={6} wrap="nowrap" px={10} py={4}
+          style={{ position: 'absolute', left: 8, top: 8, maxWidth: 'calc(100% - 180px)', borderRadius: 6,
+            background: 'rgba(20, 30, 24, 0.85)', color: '#e6fcf5', border: '1px solid #38d9a9' }}>
+          <MText size="xs" fw={600} truncate>💬 {focusNames.join(' · ')}</MText>
+          <Tooltip label="Keep the conversation in view">
+            <ActionIcon size="sm" variant="subtle" color="teal" aria-label="Follow conversation"
+              onClick={() => sceneRef.current && (sceneRef.current.followGroup = true)}>◎</ActionIcon>
+          </Tooltip>
+          {onClearFocus && (
+            <Tooltip label="Stop focusing">
+              <ActionIcon size="sm" variant="subtle" color="gray" aria-label="Stop focusing on the conversation" onClick={onClearFocus}>✕</ActionIcon>
+            </Tooltip>
+          )}
+        </Group>
+      )}
       <Group gap={4} style={{ position: 'absolute', right: 8, top: 8 }}>
         <Tooltip label="Zoom in (or mouse wheel)"><ActionIcon variant="filled" color="dark" onClick={() => zoom(1.4)} aria-label="Zoom in">+</ActionIcon></Tooltip>
         <Tooltip label="Zoom out"><ActionIcon variant="filled" color="dark" onClick={() => zoom(1 / 1.4)} aria-label="Zoom out">−</ActionIcon></Tooltip>

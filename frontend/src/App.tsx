@@ -14,6 +14,7 @@ import { EventFeed } from './components/EventFeed';
 import { Analytics } from './components/Analytics';
 import { LLMPanel } from './components/LLMPanel';
 import { SocietyPanel } from './components/SocietyPanel';
+import { ConversationList, ConversationView } from './components/Conversations';
 import { MindPanel } from './components/MindPanel';
 import { ExperimentsPage } from './components/ExperimentsPage';
 import type { WorldSummary, WorldView } from './types';
@@ -109,6 +110,11 @@ export default function App() {
   // The app opens on the setup page unless the URL points at a world or the experiments page.
   const [view, setView] = useState<View>(initialView);
   const [thoughts, setThoughts] = useState<ThoughtMode>('all');
+  // Right-hand panel of the World tab, and the conversation being read (if any).
+  const [side, setSide] = useState<'villagers' | 'conversations'>('villagers');
+  const [conversation, setConversation] = useState<string[] | null>(null);
+  const [conversationFilter, setConversationFilter] = useState<string | null>(null);
+  const [focusOnMap, setFocusOnMap] = useState(true);
   const stream = useWorldStream(view === 'worlds' ? worldId : null);
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
 
@@ -122,6 +128,8 @@ export default function App() {
   useEffect(loadWorlds, [loadWorlds]);
   useEffect(() => {
     setSelected(null);
+    setConversation(null);
+    setConversationFilter(null);
     if (!worldId || view !== 'worlds') return;
     window.history.replaceState(null, '', `#${worldId}`);
     try {
@@ -144,6 +152,23 @@ export default function App() {
   const agentNames = useMemo(() => Object.fromEntries((world?.agents ?? []).map((a) => [a.id, a.name])), [world?.agents]);
   const agentSprites = useMemo(() => Object.fromEntries((world?.agents ?? []).map((a) => [a.id, a.sprite ?? ''])), [world?.agents]);
   const tickIntervalMs = world && world.speed > 0 ? 1000 / world.speed : 250;
+
+  const openConversation = (participants: string[]) => {
+    setConversation(participants);
+    setFocusOnMap(true);
+    setSide('conversations');
+    setTab('world');
+  };
+  const openConversationsOf = (agentId: string) => {
+    setConversationFilter(agentId);
+    setConversation(null);
+    setSide('conversations');
+    setTab('world');
+  };
+  const inspect = (id: string | null) => {
+    setSelected(id);
+    if (id) setSide('villagers');
+  };
 
   const deleteWorld = async () => {
     if (!worldId || !window.confirm('Delete this world and all of its history? This cannot be undone.')) return;
@@ -230,8 +255,9 @@ export default function App() {
                 <Grid.Col span={{ base: 12, lg: 8 }}>
                   <Stack gap="sm">
                     <Card withBorder padding={0} style={{ position: 'relative', height: 'min(66vh, 720px)', minHeight: 380, overflow: 'hidden' }}>
-                      <WorldCanvas world={world} selectedId={selected} onSelect={setSelected}
-                        tickIntervalMs={tickIntervalMs} thoughts={thoughts} />
+                      <WorldCanvas world={world} selectedId={selected} onSelect={inspect}
+                        tickIntervalMs={tickIntervalMs} thoughts={thoughts}
+                        focus={conversation && focusOnMap ? conversation : null} onClearFocus={() => setFocusOnMap(false)} />
                     </Card>
                     <Group justify="space-between">
                       <Legend />
@@ -243,21 +269,40 @@ export default function App() {
                     </Group>
                     <Card withBorder padding="sm">
                       <EventFeed events={stream.events} agentNames={agentNames} agentSprites={agentSprites} selectedAgent={selected}
-                        onSelectAgent={setSelected} ticksPerDay={world.ticks_per_day} height={240} />
+                        onSelectAgent={inspect} onOpenConversation={openConversation} ticksPerDay={world.ticks_per_day} height={240} />
                     </Card>
                   </Stack>
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, lg: 4 }}>
                   <Card withBorder padding="sm">
-                    {selected ? (
+                    <SegmentedControl fullWidth size="xs" mb="sm" value={side} onChange={(v) => setSide(v as typeof side)}
+                      data={[{ value: 'villagers', label: 'Villagers' }, { value: 'conversations', label: '💬 Conversations' }]} />
+                    {side === 'conversations' ? (
+                      conversation ? (
+                        <ConversationView worldId={world.id} participants={conversation} tick={world.tick}
+                          running={world.status === 'running'} liveMessages={stream.messages}
+                          onMap={focusOnMap} onToggleMap={setFocusOnMap}
+                          onClose={() => setConversation(null)} onSelectAgent={inspect} />
+                      ) : (
+                        <ConversationList worldId={world.id} tick={world.tick} agents={world.agents}
+                          filter={conversationFilter} onFilter={setConversationFilter} onOpen={openConversation}
+                          liveMessageCount={stream.messages.length} />
+                      )
+                    ) : selected ? (
                       <>
-                        <Button size="compact-xs" variant="subtle" mb="xs" onClick={() => setSelected(null)}>← All agents</Button>
-                        <AgentInspector worldId={world.id} agentId={selected} tick={world.tick} agentNames={agentNames} />
+                        <Group gap="xs" mb="xs">
+                          <Button size="compact-xs" variant="subtle" onClick={() => setSelected(null)}>← All agents</Button>
+                          {conversation && (
+                            <Button size="compact-xs" variant="subtle" onClick={() => setSide('conversations')}>💬 Back to the conversation</Button>
+                          )}
+                        </Group>
+                        <AgentInspector worldId={world.id} agentId={selected} tick={world.tick} agentNames={agentNames}
+                          onOpenConversations={openConversationsOf} />
                       </>
                     ) : (
                       <>
                         <Title order={5} mb="xs">Villagers — click one to inspect</Title>
-                        <AgentRoster agents={world.agents} onSelect={setSelected} />
+                        <AgentRoster agents={world.agents} onSelect={inspect} />
                         {stream.metrics.length > 0 && (() => {
                           const m = stream.metrics[stream.metrics.length - 1];
                           return (
@@ -276,7 +321,7 @@ export default function App() {
             <Tabs.Panel value="society">
               <SocietyPanel worldId={world.id} tick={world.tick} agents={world.agents} messages={stream.messages}
                 latest={stream.metrics[stream.metrics.length - 1]}
-                onSelectAgent={(id) => { setSelected(id); setTab('world'); }} />
+                onSelectAgent={(id) => { inspect(id); setTab('world'); }} onOpenConversation={openConversation} />
             </Tabs.Panel>
 
             <Tabs.Panel value="mind">

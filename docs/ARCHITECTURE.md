@@ -100,6 +100,14 @@ simulation.
   sharing a spot fan out in an arc in front of it. Labels and bubbles are drawn in
   screen space so they stay readable at any zoom; overlapping bubbles are pushed
   apart.
+* **Conversations.** The World tab's **Conversations** panel lists threads from
+  `GET /api/worlds/{id}/conversations` (`analysis/conversations.py`: pair sessions
+  split on long pauses, merged into group conversations on a triangle of
+  exchanges or one agent addressing several at once) and shows any set of agents'
+  messages as a chat (`GET /api/worlds/{id}/conversation?agents=…`), with delivery
+  and read status (`messages.read_tick`), the sender's intention and their
+  interactions. Focusing on a conversation dims everyone else on the map, follows
+  the participants and animates each message as an envelope.
 * **Day and night.** A darkness layer follows the in-world hour; windows, the
   market lamp and the campfire glow at night.
 

@@ -5,8 +5,9 @@ import type { Location } from './types';
 
 type G = Graphics;
 
-// Buildings sort behind anyone standing in their clearing.
-const BEHIND = 20;
+// Buildings sort behind anyone standing in their clearing: agents stop anywhere within a
+// place's radius, including just north of the building, and must never be hidden by it.
+const BEHIND = 48;
 
 const rect = (g: G, x: number, y: number, w: number, h: number, color: number, alpha = 1) =>
   g.rect(Math.round(x), Math.round(y), w, h).fill({ color, alpha });

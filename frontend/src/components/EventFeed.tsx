@@ -10,6 +10,8 @@ interface Props {
   agentSprites?: Record<string, string>;
   selectedAgent: string | null;
   onSelectAgent: (id: string) => void;
+  /** Open the conversation a message belongs to. */
+  onOpenConversation?: (participants: string[]) => void;
   height?: number | string;
   ticksPerDay: number;
 }
@@ -31,7 +33,7 @@ const TYPE_COLORS: Record<string, string> = {
 
 const IMPORTANT_DEFAULT = ['life', 'social', 'messages', 'mind'];
 
-export function EventFeed({ events, agentNames, agentSprites = {}, selectedAgent, onSelectAgent, height = 260, ticksPerDay }: Props) {
+export function EventFeed({ events, agentNames, agentSprites = {}, selectedAgent, onSelectAgent, onOpenConversation, height = 260, ticksPerDay }: Props) {
   const [groups, setGroups] = useState<string[]>(IMPORTANT_DEFAULT);
   const [onlySelected, setOnlySelected] = useState(false);
 
@@ -76,7 +78,11 @@ export function EventFeed({ events, agentNames, agentSprites = {}, selectedAgent
               <Text
                 size="xs"
                 style={{ cursor: e.agent_id ? 'pointer' : undefined }}
-                onClick={() => e.agent_id && onSelectAgent(e.agent_id)}
+                title={e.type === 'message' && onOpenConversation ? 'Open this conversation' : undefined}
+                onClick={() => {
+                  if (e.type === 'message' && onOpenConversation && e.agent_id && e.target_id) onOpenConversation([e.agent_id, e.target_id]);
+                  else if (e.agent_id) onSelectAgent(e.agent_id);
+                }}
               >
                 {e.summary}
                 {e.visibility === 'private' && <Text span size="xs" c="dimmed"> (private)</Text>}

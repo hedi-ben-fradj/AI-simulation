@@ -223,6 +223,21 @@ A deterministic baseline. It is the fallback for every failed LLM decision and
 the default "mind". It uses only what the agent knows and draws from the
 `policy` RNG stream. It includes canned small talk and existential lines.
 
+### Conversations
+Messages are always one sender → one recipient. `analysis/conversations.py`
+groups them into conversations: per-pair sessions split by pauses longer than
+`gap_ticks` (a third of a day), merged into a **group** conversation when the
+agents really talk together (a triangle A–B, A–C, B–C of overlapping sessions,
+or one agent addressing several in the same tick). Talking to two people
+separately stays two conversations. The engine records reads
+(`TickResult.reads` → `messages.read_tick`), so a transcript shows each
+message's status: `sending` (not delivered yet), `unread` (in the inbox),
+`read`, `never_read` (expired or dropped: agents have limited attention) or
+`undelivered` (recipient died). The transcript endpoint also returns the
+sender's visible intention at that tick and the participants' socialise / gift /
+trade / theft events. UI: `components/Conversations.tsx` (list + chat
+transcript) in the World tab's right panel, plus the map focus mode.
+
 ### Measurement and experiments
 - `analysis/behavior.py`: per-agent behaviour rates are correlated (Pearson)
   with **initial** traits under pre-registered trait→behaviour hypotheses,
@@ -413,10 +428,10 @@ context.
 - SQLite is the default (`sqlite:///./aisim.db`), with a write lock that
   serialises worker-thread writes. PostgreSQL uses `postgresql+psycopg://…`.
 - **Alembic migrations live inside the package**
-  (`aisim/persistence/migrations`, single revision `0001_initial_schema.py`)
+  (`aisim/persistence/migrations`: `0001_initial_schema.py`, `0002_message_read_tick.py`)
   so installed (non-editable) deployments still find them. They run at
   startup. For a schema change, add a new revision there and update
-  `models.py`; don't edit 0001.
+  `models.py`; never edit an existing revision.
 
 ### API (`api/app.py`, `api/experiments.py`)
 REST under `/api`:
@@ -425,6 +440,8 @@ REST under `/api`:
 - `worlds` (list/create), `worlds/{id}` (get/delete), `.../config`
 - `.../start|pause|step|speed`
 - `.../agents[/{aid}[/memories]]`, `.../events|messages|decisions|metrics|relationships|trust|traits|analysis|llm`
+- `.../conversations[?agent=]` (threads) and `.../conversation?agents=a,b,…` (transcript), see below
+- `.../credentials` (POST a provider key for that world; memory only)
 - `experiment-templates`, `experiments[/{id}[/cancel|/export]]`
 
 Mutating endpoints need `Authorization: Bearer` only when `AISIM_API_TOKEN` is
@@ -515,7 +532,7 @@ Uvicorn graceful shutdown is capped at 5 s.
   - food → market stall whose produce reflects stock
   - rest → tents
   - gathering → campfire with an animated flame
-  - Buildings use `zIndex = cy − 20`, so agents in the clearing draw in front.
+  - Buildings use `zIndex = cy − 48`, so agents anywhere in the clearing draw in front.
 - **Scene graph**:
   - `root` (camera; world px) holds the ground sprite, `objects` (sortable by
     y: trees, props, agents), the darkness layer and additive lights.
@@ -532,6 +549,12 @@ Uvicorn graceful shutdown is capped at 5 s.
   and thought bubbles (violet; Intentions Off/Selected/All) are separated
   greedily (`separateBubbles`). Above 40 agents only the selected agent's
   label shows.
+- **Conversation focus**: `focus` (participant ids) highlights them with a teal
+  ring, dims everyone else (alpha 0.3, no labels or bubbles), frames them once
+  and then follows their centroid (`followGroup`; dragging stops it, the ◎ in
+  the focus chip resumes). Each new message (`said` + `said_to` in the agent
+  brief) spawns an envelope that flies sender → recipient (`animateEnvelopes`);
+  with a focus, only messages among the participants do.
 - **Day/night**: `nightAlpha(tick, ticksPerDay)` is 0 from 07:00 to 18:00,
   ramps at dusk and dawn, and is 0.5 at night. Lights fade in with it.
 - Pixi details that bit before:
@@ -587,7 +610,7 @@ variables.
 ## 7. Tests and CI
 
 ```bash
-cd backend && pytest -q                     # ~156 passed, 5 skipped (live LLM tests skip without a key)
+cd backend && pytest -q                     # ~161 passed, 5 skipped (live LLM tests skip without a key)
 TEST_DATABASE_URL=postgresql+psycopg://… pytest -q tests/test_api_persistence.py tests/test_experiments.py
 ANTHROPIC_API_KEY=… pytest -m live_llm tests/test_llm_live.py   # real API, costs money
 cd frontend && npm run typecheck && npm test && npm run build

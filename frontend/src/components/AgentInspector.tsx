@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Badge, Card, Group, Progress, ScrollArea, Stack, Table, Tabs, Text, Title, Tooltip,
+  Badge, Button, Card, Group, Progress, ScrollArea, Stack, Table, Tabs, Text, Title, Tooltip,
 } from '@mantine/core';
 import { api } from '../api';
 import type { AgentDetail } from '../types';
@@ -13,6 +13,8 @@ interface Props {
   agentId: string;
   tick: number;
   agentNames: Record<string, string>;
+  /** Show the conversations this agent took part in. */
+  onOpenConversations?: (agentId: string) => void;
 }
 
 function Meter({ label, value, max = 100, color, invert = false }: { label: string; value: number; max?: number; color?: string; invert?: boolean }) {
@@ -29,7 +31,7 @@ function Meter({ label, value, max = 100, color, invert = false }: { label: stri
   );
 }
 
-export function AgentInspector({ worldId, agentId, tick, agentNames }: Props) {
+export function AgentInspector({ worldId, agentId, tick, agentNames, onOpenConversations }: Props) {
   const [agent, setAgent] = useState<AgentDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [trustLog, setTrustLog] = useState<Awaited<ReturnType<typeof api.trustChanges>>>([]);
@@ -69,6 +71,9 @@ export function AgentInspector({ worldId, agentId, tick, agentNames }: Props) {
           <div>
             <Title order={4}>{agent.name}</Title>
             <Text size="xs" c="dimmed">{agent.background}</Text>
+            {onOpenConversations && (
+              <Button size="compact-xs" variant="light" mt={4} onClick={() => onOpenConversations(agent.id)}>💬 Conversations</Button>
+            )}
           </div>
         </Group>
         <Stack gap={4} align="flex-end">
