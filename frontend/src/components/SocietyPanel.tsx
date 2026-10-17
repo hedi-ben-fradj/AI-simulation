@@ -5,6 +5,7 @@ import {
 import { api } from '../api';
 import type { AgentBrief, Message, Metrics } from '../types';
 import { trustColor } from '../theme';
+import { sheetUrl } from '../sprites';
 
 interface Props {
   worldId: string;
@@ -76,10 +77,14 @@ function Network({ agents, rels, scheme, onSelect }: { agents: AgentBrief[]; rel
         return (
           <g key={a.id} transform={`translate(${p.x},${p.y})`} style={{ cursor: 'pointer' }}
             onMouseEnter={() => setHover(a.id)} onMouseLeave={() => setHover(null)} onClick={() => onSelect(a.id)}>
-            <circle r={12} fill={a.alive ? 'var(--mantine-color-body)' : 'var(--mantine-color-default-hover)'}
+            <circle r={14} fill={a.alive ? 'var(--mantine-color-body)' : 'var(--mantine-color-default-hover)'}
               stroke={a.controller === 'llm' ? '#7950f2' : 'var(--mantine-color-default-border)'} strokeWidth={2} />
-            <text textAnchor="middle" dy={4} fontSize={10} fill="var(--mantine-color-text)">{a.name.slice(0, 2)}</text>
-            <text textAnchor="middle" dy={26} fontSize={11} fill="var(--mantine-color-text)" opacity={a.alive ? 1 : 0.5}>
+            {/* the character's south-facing standing frame, cropped to its 18x18 core */}
+            <svg x={-12} y={-13} width={24} height={24} viewBox="7 6 18 18" style={{ overflow: 'hidden' }}>
+              <image href={sheetUrl(a.sprite ?? 'human-worker-red')} width={768} height={256}
+                style={{ imageRendering: 'pixelated', filter: a.alive ? undefined : 'grayscale(1)' }} />
+            </svg>
+            <text textAnchor="middle" dy={28} fontSize={11} fill="var(--mantine-color-text)" opacity={a.alive ? 1 : 0.5}>
               {a.name}{a.alive ? '' : ' †'}
             </text>
           </g>

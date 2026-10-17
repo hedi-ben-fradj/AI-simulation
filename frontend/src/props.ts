@@ -5,6 +5,9 @@ import type { Location } from './types';
 
 type G = Graphics;
 
+// Buildings sort behind anyone standing in their clearing.
+const BEHIND = 20;
+
 const rect = (g: G, x: number, y: number, w: number, h: number, color: number, alpha = 1) =>
   g.rect(Math.round(x), Math.round(y), w, h).fill({ color, alpha });
 
@@ -41,7 +44,7 @@ function workshop(cx: number, cy: number): Container {
   rect(g, cx - 31, cy - 8, 10, 3, 0x7a5230);
   rect(g, cx - 30, cy - 11, 8, 3, 0x8b5a2b);
   c.addChild(g);
-  c.zIndex = cy - 4;
+  c.zIndex = cy - BEHIND;
   return c;
 }
 
@@ -86,7 +89,7 @@ function camp(cx: number, cy: number): Container {
   rect(g, cx - 4, cy + 10, 10, 4, 0x6f8f4a); // bedroll
   rect(g, cx - 4, cy + 10, 3, 4, 0xe8e2d0);
   c.addChild(g);
-  c.zIndex = cy + 7;
+  c.zIndex = cy - BEHIND;
   return c;
 }
 
@@ -138,7 +141,7 @@ export function buildProp(loc: Location, unit: number): PropHandle | null {
       const g = new Graphics();
       drawMarket(g, cx, cy, loc.max_stock ? (loc.stock ?? 0) / loc.max_stock : 1);
       container.addChild(g);
-      container.zIndex = cy - 3;
+      container.zIndex = cy - BEHIND;
       return { container, market: g, lights: [{ x: cx, y: cy - 24, radius: 18, color: 0xffd27a }] };
     }
     case 'rest':

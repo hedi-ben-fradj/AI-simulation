@@ -30,15 +30,19 @@ const CROWDED_AGENTS = 40;
 const HURT_MS = 350;
 // Feet sit at y = 23 of the 32px frame.
 const ANCHOR_Y = 23 / FRAME;
+// The initial view zooms in at most this far (screen px per sprite px).
+const DEFAULT_MAX_SCALE = 2.5;
 
 /** Agents standing at the same spot are fanned out around it (visual only). */
 function crowdOffset(id: string, index: number, count: number): { dx: number; dy: number } {
   if (count <= 1) return { dx: 0, dy: 0 };
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  const angle = (index / count) * Math.PI * 2 + (h % 7) * 0.1;
+  // A shallow arc in front of (below) the spot, so nobody hides behind a building.
+  const spread = Math.PI * 1.3;
+  const angle = -Math.PI * 0.15 + (index / (count - 1)) * spread + ((h % 5) - 2) * 0.03;
   const r = 9 + count * 1.5;
-  return { dx: Math.cos(angle) * r, dy: Math.sin(angle) * r * 0.6 };
+  return { dx: -Math.cos(angle) * r, dy: 3 + Math.sin(angle) * r * 0.6 };
 }
 
 const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
@@ -94,6 +98,7 @@ function makeBubble(text: string, kind: 'speech' | 'thought'): Container {
   t.position.set(pad, pad);
   c.addChild(g, t);
   c.pivot.set(w / 2, h + 8);
+  (c as any).__size = { w, h: h + 8 };
   return c;
 }
 
@@ -182,11 +187,33 @@ class Scene {
     this.clampCenter();
   }
 
-  /** Default view: the map fills the canvas (no empty margins), centred. */
-  resetView() {
-    this.zoom = this.cover / this.fit;
+  /** Whole map visible, centred. */
+  showWholeMap() {
+    this.zoom = 1;
     this.center = { x: this.mapW / 2, y: this.mapH / 2 };
     this.follow = false;
+  }
+
+  /** Default view: close enough to see the characters, framing where the villagers are. */
+  frameVillagers(agents: AgentBrief[]) {
+    const alive = agents.filter((a) => a.alive);
+    const pts = (alive.length ? alive : agents).map((a) => ({ x: a.x * UNIT, y: a.y * UNIT }));
+    this.follow = false;
+    if (!pts.length) {
+      this.zoom = this.cover / this.fit;
+      this.center = { x: this.mapW / 2, y: this.mapH / 2 };
+      return;
+    }
+    const pad = 70;
+    const x0 = Math.min(...pts.map((p) => p.x)) - pad;
+    const x1 = Math.max(...pts.map((p) => p.x)) + pad;
+    const y0 = Math.min(...pts.map((p) => p.y)) - pad;
+    const y1 = Math.max(...pts.map((p) => p.y)) + pad;
+    const { width, height } = this.app.screen;
+    const target = Math.max(this.cover, Math.min(DEFAULT_MAX_SCALE, width / (x1 - x0), height / (y1 - y0)));
+    this.zoom = Math.max(1, Math.min(8, target / this.fit));
+    this.center = { x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
+    this.clampCenter();
   }
 
   zoomAt(factor: number, sx?: number, sy?: number) {
@@ -278,7 +305,7 @@ class Scene {
     this.darkness.clear().rect(0, 0, this.mapW, this.mapH).fill({ color: 0x0b1030 });
     this.buildLocationLabels(world);
     this.layout();
-    this.resetView();
+    this.frameVillagers(world.agents);
   }
 
   buildLocationLabels(world: WorldView) {
@@ -524,6 +551,33 @@ class Scene {
         }
       }
     }
+    this.separateBubbles();
+  }
+
+  /** Nudge overlapping bubbles upwards so every line stays readable. */
+  separateBubbles() {
+    const items = (this.bubbles.children as Container[]).map((b) => {
+      const { w, h } = (b as any).__size as { w: number; h: number };
+      return { b, w, h, x: b.position.x, bottom: b.position.y };
+    });
+    items.sort((p, q) => q.bottom - p.bottom);
+    const placed: typeof items = [];
+    for (const it of items) {
+      let moved = true;
+      while (moved) {
+        moved = false;
+        for (const p of placed) {
+          const overlapX = Math.abs(it.x - p.x) < (it.w + p.w) / 2 + 2;
+          const overlapY = it.bottom > p.bottom - p.h - 2 && it.bottom - it.h < p.bottom;
+          if (overlapX && overlapY) {
+            it.bottom = p.bottom - p.h - 2;
+            moved = true;
+          }
+        }
+      }
+      it.b.position.set(Math.round(it.x), Math.round(it.bottom));
+      placed.push(it);
+    }
   }
 
   destroy() {
@@ -591,7 +645,7 @@ export function WorldCanvas({ world, selectedId, onSelect, tickIntervalMs, thoug
         <Tooltip label="Zoom in (or mouse wheel)"><ActionIcon variant="filled" color="dark" onClick={() => zoom(1.4)} aria-label="Zoom in">+</ActionIcon></Tooltip>
         <Tooltip label="Zoom out"><ActionIcon variant="filled" color="dark" onClick={() => zoom(1 / 1.4)} aria-label="Zoom out">−</ActionIcon></Tooltip>
         <Tooltip label="Reset the view">
-          <ActionIcon variant="filled" color="dark" onClick={() => { setFollow(false); sceneRef.current?.resetView(); }} aria-label="Fit map">⤢</ActionIcon>
+          <ActionIcon variant="filled" color="dark" onClick={() => { setFollow(false); sceneRef.current?.showWholeMap(); }} aria-label="Show whole map">⤢</ActionIcon>
         </Tooltip>
         <Tooltip label={selectedId ? 'Follow the selected agent' : 'Select an agent to follow'}>
           <ActionIcon variant={follow && selectedId ? 'filled' : 'light'} color={follow && selectedId ? 'yellow' : 'gray'}

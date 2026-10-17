@@ -5,6 +5,8 @@ import {
 import { api } from '../api';
 import type { AgentDetail } from '../types';
 import { ACTION_COLORS, MOOD_COLORS, hex } from '../theme';
+import { ARCHETYPE_LABELS, archetypeOf } from '../sprites';
+import { Avatar } from './Avatar';
 
 interface Props {
   worldId: string;
@@ -61,10 +63,14 @@ export function AgentInspector({ worldId, agentId, tick, agentNames }: Props) {
   return (
     <Stack gap="xs">
       <Group justify="space-between" wrap="nowrap">
-        <div>
-          <Title order={4}>{agent.name}</Title>
-          <Text size="xs" c="dimmed">{agent.background}</Text>
-        </div>
+        <Group gap="sm" wrap="nowrap" align="flex-start">
+          <Avatar sprite={agent.sprite} size={52} dead={!agent.alive}
+            title={ARCHETYPE_LABELS[archetypeOf(agent.sprite)]} />
+          <div>
+            <Title order={4}>{agent.name}</Title>
+            <Text size="xs" c="dimmed">{agent.background}</Text>
+          </div>
+        </Group>
         <Stack gap={4} align="flex-end">
           <Badge color={agent.controller === 'llm' ? 'violet' : 'gray'} variant="light">
             {agent.controller === 'llm' ? 'LLM agent' : 'Rule agent'}

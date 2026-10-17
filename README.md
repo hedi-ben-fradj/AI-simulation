@@ -116,8 +116,12 @@ docker compose up --build        # then open http://localhost:8080
    pick **Identical** personalities (everyone 50%) or **Randomised** with a
    deviation, and adjust the other settings. The right-hand panel previews the
    economy and every agent's starting traits.
-2. Click **Start simulation**. Click an agent on the map (or in the list) to
-   inspect it; use **Pause / Step / +1 day / speed** at the top.
+2. Click **Start simulation**. The village appears as a pixel-art map: each agent
+   is an animated character, places are buildings (workshop, market stall, tents,
+   campfire) joined by dirt paths through the forest, and night falls every
+   evening. **Drag** to pan, **scroll** (or **+ / −**) to zoom, **⤢** to see the
+   whole map and **◎** to follow the selected agent. Click an agent on the map (or
+   in the list) to inspect it; use **Pause / Step / +1 day / speed** at the top.
 3. The **Society**, **Mind** and **Analytics** tabs show relationships, whether
    traits drive behaviour, and population statistics. **Experiments** compares
    settings across several random seeds.
@@ -184,8 +188,15 @@ print(result.metrics)
   costs, trust towards strangers, theft, hazards, death/replacement, existential
   goal, and rule-based / mock / Claude minds, with a live preview of the economy
   and the agents' starting personalities.
-* **Watch a world** — live PixiJS map with movement, mood colours, speech and
-  intention bubbles; run, pause, step, change speed.
+* **Watch a world** — live PixiJS pixel-art village: animated sprite characters
+  (walking, working, resting, stealing, collapsing when they die) with names,
+  mood dots, health bars, speech and intention bubbles; tile terrain with paths
+  and forests, a day/night cycle with lit windows and a campfire; pan, zoom and
+  follow; run, pause, step, change speed. Each agent's character class follows
+  its strongest starting trait (mage = spiritual/scientific/artistic, archer =
+  curious/risk-taking, warrior = ambitious/competitive, soldier = persistent,
+  villager = social/kind, guard = honest/impulsive, orc = criminal tendency);
+  agents with balanced personalities get a varied human look (never an orc).
 * **Inspect agents** — state, needs, temporary emotions, goals, time allocation,
   personality (and its drift), relationships and the trust evidence behind them,
   memories, every decision (LLM, rule or fallback, with rejection reasons), and
@@ -227,6 +238,10 @@ backend/                 Python 3.11+, FastAPI, SQLAlchemy, Alembic
   scripts/stress_test.py performance measurement
   tests/                 unit, integration and live-LLM tests
 frontend/                React + TypeScript + Vite + Mantine + PixiJS + Recharts
+  public/sprites/        character sheets and environment tiles (see Credits)
+  src/sprites.ts         sheet layout, animations, texture loading
+  src/terrain.ts         deterministic tile map (paths, clearings, forests)
+  src/props.ts           pixel-art buildings and the campfire
 docker-compose.yml       PostgreSQL + backend + frontend
 ```
 
@@ -240,3 +255,12 @@ docker-compose.yml       PostgreSQL + backend + frontend
 | Persistence: PostgreSQL, events, messages, memories, relationships, trait history, LLM usage, resume after restart, event inspection | ✅ |
 | Visualisation: 2D world, movement, intention bubbles, agent inspector, events/messages, population/economy/health statistics | ✅ |
 | Experiments: ≥2 resource environments, repeated seeds, comparisons, recorded config/model settings, metric export | ✅ |
+
+## Credits
+
+Character sprites and environment tiles come from the **Puny Characters** pixel-art
+pack by Shade (32×32 characters, 16×16 tiles), stored under
+`frontend/public/sprites/`. Check the pack's licence terms on its distribution
+page before redistributing this project publicly. Buildings and the campfire are
+drawn in code to match the pack's style.
+

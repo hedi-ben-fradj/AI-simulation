@@ -78,6 +78,31 @@ effect between ticks, so state is never persisted mid-tick.
 The researcher UI is an observation tool and shows everything; agent prompts are
 built only by `agents/context.py`, which enforces the table above.
 
+## The map (frontend)
+
+The map is purely a view of `WorldView`; nothing drawn there feeds back into the
+simulation.
+
+* **Appearance.** `runtime/appearance.py` picks each agent's character sheet from
+  its strongest *starting* trait (≥ 8 points above 50%), so the look stays stable
+  while traits drift. Balanced agents get a deterministic pick from all human
+  sheets (never orcs). The sheet name is sent as `sprite` in agent views
+  and setup previews.
+* **Terrain.** `src/terrain.ts` derives a 16 px tile map from the world id and
+  location layout: grass variants from value noise, dirt clearings under each
+  location, winding paths along a minimum spanning tree between locations, and
+  forests that thicken towards the edges. It is deterministic, so a world always
+  looks the same. The ground is baked once into a single texture.
+* **Characters.** `src/sprites.ts` describes the 24×8 sheet layout (rows are
+  facing directions, columns are stand / walk / swing / raise / hurt / lie
+  frames). `WorldCanvas.tsx` interpolates positions between ticks, faces agents
+  along their movement, and picks an animation from the current action. Agents
+  sharing a spot fan out in an arc in front of it. Labels and bubbles are drawn in
+  screen space so they stay readable at any zoom; overlapping bubbles are pushed
+  apart.
+* **Day and night.** A darkness layer follows the in-world hour; windows, the
+  market lamp and the campfire glow at night.
+
 ## Extending
 
 * **New action:** register an `ActionSpec` (preconditions in `check`, per-tick

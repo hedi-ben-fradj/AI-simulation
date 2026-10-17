@@ -87,8 +87,9 @@ function AgentRoster({ agents, onSelect }: { agents: WorldView['agents']; onSele
               </Group>
               {a.alive && (
                 <Group gap={6} mt={4} wrap="nowrap">
-                  <Progress value={a.health} size="sm" color={a.health > 50 ? 'teal' : a.health > 25 ? 'yellow' : 'red'} style={{ flex: 1 }} aria-label="health" />
-                  <Text size="xs" c="dimmed" w={70} ta="right">{a.tokens.toFixed(1)} tokens</Text>
+                  <Progress value={a.health} size="sm" color={a.health > 50 ? 'teal' : a.health > 25 ? 'yellow' : 'red'} style={{ flex: 1 }}
+                    aria-label="health" title={`health ${Math.round(a.health)}`} />
+                  <Text size="xs" c="dimmed" ta="right" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{a.tokens.toFixed(1)} tokens</Text>
                 </Group>
               )}
             </div>
@@ -141,6 +142,7 @@ export default function App() {
 
   const world = stream.world;
   const agentNames = useMemo(() => Object.fromEntries((world?.agents ?? []).map((a) => [a.id, a.name])), [world?.agents]);
+  const agentSprites = useMemo(() => Object.fromEntries((world?.agents ?? []).map((a) => [a.id, a.sprite ?? ''])), [world?.agents]);
   const tickIntervalMs = world && world.speed > 0 ? 1000 / world.speed : 250;
 
   const deleteWorld = async () => {
@@ -240,7 +242,7 @@ export default function App() {
                       </Group>
                     </Group>
                     <Card withBorder padding="sm">
-                      <EventFeed events={stream.events} agentNames={agentNames} selectedAgent={selected}
+                      <EventFeed events={stream.events} agentNames={agentNames} agentSprites={agentSprites} selectedAgent={selected}
                         onSelectAgent={setSelected} ticksPerDay={world.ticks_per_day} height={240} />
                     </Card>
                   </Stack>

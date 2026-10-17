@@ -6,6 +6,8 @@ import {
 import { api } from '../api';
 import type { WorldSummary, WorldView } from '../types';
 import { trustColor } from '../theme';
+import { ARCHETYPE_LABELS, archetypeOf } from '../sprites';
+import { Avatar } from './Avatar';
 
 interface Props {
   worlds: WorldSummary[];
@@ -313,11 +315,12 @@ export function SetupPage({ worlds, onCreated, onOpenWorld }: Props) {
             {preview?.agents && (
               <Card withBorder padding="md">
                 <Text fw={700}>Starting personalities</Text>
-                <Text size="xs" c="dimmed" mb="xs">Each square is a trait: grey = 50%, red = lower, blue = higher. Hover for values.</Text>
+                <Text size="xs" c="dimmed" mb="xs">Each square is a trait: grey = 50%, red = lower, blue = higher. Hover for values. The character sprite follows each agent's strongest trait.</Text>
                 <ScrollArea.Autosize mah={320}>
                   <Stack gap={4}>
                     {preview.agents.map((a: any) => (
                       <Group key={a.name} gap={6} wrap="nowrap">
+                        <Avatar sprite={a.sprite} size={22} title={ARCHETYPE_LABELS[archetypeOf(a.sprite)]} />
                         <Text size="xs" w={56} fw={600} style={{ flexShrink: 0 }}>{a.name}</Text>
                         <Group gap={2} wrap="nowrap">
                           {traits.map((t) => (

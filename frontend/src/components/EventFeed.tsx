@@ -1,10 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Badge, Chip, Group, ScrollArea, Stack, Text } from '@mantine/core';
 import type { SimEvent } from '../types';
+import { Avatar } from './Avatar';
 
 interface Props {
   events: SimEvent[];
   agentNames: Record<string, string>;
+  /** Character sheet per agent id, for the row avatars. */
+  agentSprites?: Record<string, string>;
   selectedAgent: string | null;
   onSelectAgent: (id: string) => void;
   height?: number | string;
@@ -28,7 +31,7 @@ const TYPE_COLORS: Record<string, string> = {
 
 const IMPORTANT_DEFAULT = ['life', 'social', 'messages', 'mind'];
 
-export function EventFeed({ events, agentNames, selectedAgent, onSelectAgent, height = 260, ticksPerDay }: Props) {
+export function EventFeed({ events, agentNames, agentSprites = {}, selectedAgent, onSelectAgent, height = 260, ticksPerDay }: Props) {
   const [groups, setGroups] = useState<string[]>(IMPORTANT_DEFAULT);
   const [onlySelected, setOnlySelected] = useState(false);
 
@@ -66,6 +69,9 @@ export function EventFeed({ events, agentNames, selectedAgent, onSelectAgent, he
           {shown.map((e, i) => (
             <Group key={`${e.tick}-${i}-${e.type}`} gap={6} wrap="nowrap" align="flex-start">
               <Text size="xs" c="dimmed" ff="monospace" style={{ flexShrink: 0 }}>{time(e.tick)}</Text>
+              {e.agent_id && agentSprites[e.agent_id]
+                ? <Avatar sprite={agentSprites[e.agent_id]} size={18} title={agentNames[e.agent_id]} />
+                : <div style={{ width: 18, flexShrink: 0 }} />}
               <Badge size="xs" variant="light" color={TYPE_COLORS[e.type] ?? 'gray'} style={{ flexShrink: 0 }}>{e.type.replace(/_/g, ' ')}</Badge>
               <Text
                 size="xs"
