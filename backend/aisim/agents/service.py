@@ -29,7 +29,7 @@ from ..config import SimulationConfig
 from ..engine.actions import ActionProposal
 from ..engine.policy import decide as rule_decide
 from ..engine.simulation import DecisionRequest, Simulation
-from ..llm import LLMError, LLMProvider, LLMRequest, LLMResponse, make_provider
+from ..llm import LLMError, LLMProvider, LLMRequest, LLMResponse, credentials, make_provider
 from ..llm.pricing import estimate_cost, prices_for
 from ..llm.ratelimit import RateLimiter
 from .context import build_context
@@ -64,11 +64,19 @@ class LLMDecider:
         self.in_flight = 0
         self.budget_exhausted = False
         self.last_context_tokens = 0
+        # Where the provider's key comes from: world | server | missing | subscription | not_needed.
+        self.credential = "not_needed"
+        self.last_error_kind: str | None = None
         self._usage: list[dict[str, Any]] = []
 
     @classmethod
     def from_config(cls, config: SimulationConfig, world_id: str = "") -> "LLMDecider":
-        return cls(config, make_provider(config.llm), world_id)
+        provider = make_provider(config.llm, world_id, config.simulation.decision_timeout_seconds)
+        decider = cls(config, provider, world_id)
+        decider.credential = credentials.resolve(config.llm.provider, world_id)[1]
+        if config.llm.provider == "claude_code":
+            decider.credential = "subscription"
+        return decider
 
     # ------------------------------------------------------------------ public
     def restore_spend(self, spend_usd: float) -> None:
@@ -85,7 +93,8 @@ class LLMDecider:
             "spend_usd": round(self.spend_usd, 6), "max_world_spend": self.cfg.maximum_world_spend,
             "max_agent_daily_spend": self.cfg.maximum_agent_daily_spend, "budget_exhausted": self.budget_exhausted,
             "queue_depth": self.in_flight, "effort": self.cfg.effort, "rate_limited": self.rate_limited,
-            "last_context_tokens": self.last_context_tokens,
+            "last_context_tokens": self.last_context_tokens, "credential": self.credential,
+            "last_error_kind": self.last_error_kind,
         }
 
     async def close(self) -> None:
@@ -183,8 +192,11 @@ class LLMDecider:
                 response = await self.provider.complete(request)
             except LLMError as exc:
                 self.failures += 1
+                repeated = exc.kind == self.last_error_kind
+                self.last_error_kind = exc.kind
                 self._record(agent_id, tick, exc.response, False, exc.kind)
-                if exc.kind in ("authentication", "permission_denied", "model_not_found"):
+                if not repeated and exc.kind in ("authentication", "permission_denied", "model_not_found", "missing_api_key",
+                                "insufficient_credits", "cli_not_found", "cli_unsupported_option"):
                     log.error("LLM configuration error for world %s: %s", self.world_id, exc)
                 return None, {"fallback_reason": f"llm_error:{exc.kind}",
                               "latency_ms": (time.monotonic() - t0) * 1000}
@@ -205,12 +217,15 @@ class LLMDecider:
             self._record(agent_id, tick, response, False, f"invalid_output: {exc}")
             return None, {"fallback_reason": "invalid_output", "latency_ms": latency}
         self._record(agent_id, tick, response, True, None)
+        self.last_error_kind = None
         return decision.to_proposal(), {"latency_ms": latency}
 
     def _record(self, agent_id: str, tick: int, response: LLMResponse | None, success: bool,
                 error: str | None) -> None:
         cost = 0.0
-        if response is not None:
+        if response is not None and response.cost_usd is not None:
+            cost = response.cost_usd  # reported by the provider (0 for the subscription)
+        elif response is not None:
             cost = estimate_cost(self.input_price, self.output_price, response.input_tokens,
                                  response.output_tokens, response.cache_read_tokens, response.cache_write_tokens)
         self.spend_usd += cost

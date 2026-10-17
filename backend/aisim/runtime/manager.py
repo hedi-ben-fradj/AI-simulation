@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 from ..config import SimulationConfig, load_config
 from ..engine.simulation import Simulation
+from ..llm import credentials
 from ..persistence.repository import Repository
 from .deciders import Decider, RuleDecider
 from .hub import Hub
@@ -38,13 +39,16 @@ class WorldManager:
         self._lock = asyncio.Lock()
 
     async def create_world(self, preset: str = "default", overrides: dict[str, Any] | None = None,
-                           name: str | None = None, start: bool = False) -> WorldRunner:
+                           name: str | None = None, start: bool = False, api_key: str | None = None
+                           ) -> WorldRunner:
         config = load_config(preset, overrides)
         if name:
             config = config.model_copy(update={"name": name})
         if config.simulation.population > config.simulation.max_agents:
             raise ValueError("population exceeds max_agents")
         sim = Simulation.create(config, uuid.uuid4().hex[:12])
+        # The key lives in memory only (never in the stored config).
+        credentials.set_world_key(sim.world.id, api_key)
         await asyncio.to_thread(self.repo.create_world, sim, preset)
         runner = WorldRunner(sim, self.repo, self.hub, self.decider_factory(config, sim.world.id), preset)
         self.runners[sim.world.id] = runner
@@ -88,7 +92,17 @@ class WorldManager:
     async def get(self, world_id: str) -> WorldRunner | None:
         return self.runners.get(world_id) or await self.load(world_id)
 
+    async def set_api_key(self, world_id: str, api_key: str | None) -> WorldRunner | None:
+        """Give a world a new provider key and rebuild its decision service."""
+        runner = await self.get(world_id)
+        if runner is None:
+            return None
+        credentials.set_world_key(world_id, api_key)
+        await runner.replace_decider(self.decider_factory(runner.sim.config, world_id))
+        return runner
+
     async def delete(self, world_id: str) -> bool:
+        credentials.forget_world(world_id)
         runner = self.runners.pop(world_id, None)
         if runner is not None:
             await runner.close()

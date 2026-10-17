@@ -31,6 +31,9 @@ class LLMResponse:
     latency_ms: float = 0.0
     stop_reason: str | None = None
     served_by: str | None = None
+    # Exact cost reported by the provider (e.g. OpenRouter), in USD. None means
+    # "estimate it from the price table"; 0.0 means no per-token billing.
+    cost_usd: float | None = None
 
 
 class LLMError(Exception):

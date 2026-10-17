@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from ..engine.state import TRAITS
 from .levels import LEVEL_IDS
@@ -35,6 +35,18 @@ HAZARDS: dict[str, tuple[float, float]] = {  # (ambient per tick, while explorin
 }
 WORLD_SIZES: dict[str, float] = {"compact": 60.0, "normal": 100.0, "large": 140.0}
 
+# Model per provider when the setup page leaves it empty, and the suggestions it offers.
+DEFAULT_MODELS: dict[str, str] = {
+    "anthropic": "claude-opus-5-5",
+    "openrouter": "google/gemini-2.5-flash",
+    "claude_code": "sonnet",
+}
+MODEL_SUGGESTIONS: dict[str, list[str]] = {
+    "anthropic": ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
+    "openrouter": ["google/gemini-2.5-flash", "anthropic/claude-haiku-4.5", "anthropic/claude-sonnet-4.5"],
+    "claude_code": ["sonnet", "haiku", "opus"],
+}
+
 
 class SetupSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -57,11 +69,19 @@ class SetupSettings(BaseModel):
     hazards: Literal["none", "low", "high"] = "low"
     replace_dead: bool = False
     existential_goal: bool = True
-    provider: Literal["none", "mock", "anthropic"] = "none"
+    # none = rule-based · mock = offline LLM pipeline · anthropic / openrouter = API key ·
+    # claude_code = Claude subscription through the local Claude Code CLI.
+    provider: Literal["none", "mock", "anthropic", "openrouter", "claude_code"] = "none"
+    # Key for this world only (anthropic / openrouter). Kept in server memory, never stored
+    # with the world's configuration; empty means "use the server's environment variable".
+    api_key: SecretStr | None = Field(None, max_length=400)
     llm_agents: int | None = Field(None, ge=0, le=50)
-    model: str | None = Field(None, max_length=80)
+    model: str | None = Field(None, max_length=120)
     effort: Literal["low", "medium", "high"] | None = None
     max_world_spend: float | None = Field(None, ge=0, le=1000)
+    claude_session_mode: Literal["per_agent", "fresh"] = "per_agent"
+    # Seconds a tick waits for decisions (the CLI needs longer than an API call).
+    decision_timeout: float | None = Field(None, ge=5, le=600)
     start: bool = True
 
     @field_validator("trait_means")
@@ -113,12 +133,24 @@ def settings_to_overrides(s: SetupSettings) -> dict[str, Any]:
         "existential_goal": {"enabled": s.existential_goal},
         "llm": {"provider": s.provider, "llm_agents": s.llm_agents},
     }
-    if s.model:
-        overrides["llm"]["model"] = s.model
+    llm = overrides["llm"]
+    llm["model"] = s.model or DEFAULT_MODELS.get(s.provider, "claude-opus-5-5")
     if s.effort:
-        overrides["llm"]["effort"] = s.effort
+        llm["effort"] = s.effort
     if s.max_world_spend is not None:
-        overrides["llm"]["maximum_world_spend"] = s.max_world_spend
+        llm["maximum_world_spend"] = s.max_world_spend
+    timeout = s.decision_timeout
+    if s.provider == "claude_code":
+        # Each decision starts a CLI process; keep a few in flight and wait longer for them.
+        llm["claude_code_session_mode"] = s.claude_session_mode
+        llm["max_concurrent_requests"] = 3
+        llm["maximum_world_spend"] = None  # covered by the subscription, nothing is billed here
+        llm["maximum_agent_daily_spend"] = None
+        timeout = timeout or 120.0
+    elif s.provider == "openrouter":
+        timeout = timeout or 45.0
+    if timeout:
+        overrides["simulation"]["decision_timeout_seconds"] = timeout
     return overrides
 
 
@@ -133,6 +165,8 @@ def setup_options() -> dict[str, Any]:
         "hazards": list(HAZARDS),
         "world_sizes": ["auto", *WORLD_SIZES],
         "traits": list(TRAITS),
-        "models": ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
+        "models": MODEL_SUGGESTIONS["anthropic"],
+        "model_suggestions": MODEL_SUGGESTIONS,
+        "default_models": DEFAULT_MODELS,
         "defaults": SetupSettings().model_dump(),
     }

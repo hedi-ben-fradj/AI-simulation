@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 
@@ -38,6 +39,7 @@ class AnthropicProvider:
         kwargs: dict[str, Any] = {"timeout": timeout_seconds, "max_retries": max_retries}
         if api_key:
             kwargs["api_key"] = api_key
+        self.has_key = bool(api_key or os.environ.get("ANTHROPIC_API_KEY"))
         self.client = anthropic.AsyncAnthropic(**kwargs)
 
     def _params(self, request: LLMRequest) -> dict[str, Any]:
@@ -56,6 +58,8 @@ class AnthropicProvider:
         }
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
+        if not self.has_key:
+            raise LLMError("missing_api_key", "no Anthropic API key for this world or server")
         params = self._params(request)
         t0 = time.monotonic()
         try:

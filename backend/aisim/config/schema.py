@@ -209,9 +209,16 @@ class ExistentialSection(_Section):
 
 
 class LLMSection(_Section):
-    provider: Literal["anthropic", "mock", "none"] = "none"
-    # Any Anthropic model ID; cheaper models (e.g. claude-haiku-5-5) cut cost for large populations.
-    model: str = "claude-opus-5-5"
+    # anthropic: Anthropic API key · openrouter: OpenRouter API key (many vendors' models)
+    # claude_code: the local Claude Code CLI and its subscription login · mock: offline · none: rules only.
+    provider: Literal["anthropic", "openrouter", "claude_code", "mock", "none"] = "none"
+    # Model ID for the provider: an Anthropic ID (cheaper models such as claude-haiku-5-5 cut cost
+    # for large populations), an OpenRouter ID ("vendor/model"), or a Claude Code alias
+    # ("sonnet", "haiku", "opus") or full ID.
+    model: str = Field("claude-opus-5-5", min_length=1, max_length=120)
+    # Claude subscription mode: "per_agent" keeps one Claude Code conversation per agent
+    # (--session-id, then --resume); "fresh" starts a new unsaved one for every decision.
+    claude_code_session_mode: Literal["per_agent", "fresh"] = "per_agent"
     # How many agents are LLM-controlled; the rest use the rule-based policy.
     # None means all agents.
     llm_agents: int | None = None

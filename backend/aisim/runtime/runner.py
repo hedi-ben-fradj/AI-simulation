@@ -164,6 +164,16 @@ class WorldRunner:
             self._task = None
         await self._persist_status()
 
+    async def replace_decider(self, decider: Decider) -> None:
+        """Swap the decision service between ticks, keeping the world's spend so far."""
+        async with self._lock:
+            old = self.decider
+            spend = old.stats().get("spend_usd")
+            if spend and hasattr(decider, "restore_spend"):
+                decider.restore_spend(spend)
+            self.decider = decider
+        await old.close()
+
     def set_speed(self, speed: float) -> None:
         self.speed = max(0.0, min(float(speed), 100.0))
 

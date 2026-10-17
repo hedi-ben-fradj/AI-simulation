@@ -1,7 +1,8 @@
 """FastAPI application: REST API + WebSocket live updates.
 
-The Anthropic API key is read only by the backend (environment variable) and is
-never sent to the browser; the frontend never calls an LLM directly.
+Provider API keys are used only by the backend (environment variables, or a key
+entered for one world, kept in memory) and are never sent back to the browser;
+the frontend never calls an LLM directly.
 """
 
 from __future__ import annotations
@@ -21,12 +22,14 @@ from ..config.levels import describe_economy
 from ..config.setup import SetupSettings, settings_to_overrides, setup_options
 from ..engine.actions import REGISTRY
 from ..engine.state import TRAIT_DESCRIPTIONS
+from ..llm import credentials
+from ..llm.claude_code_provider import cli_status
 from ..persistence import Database, Repository
 from ..runtime.hub import Hub
 from ..runtime.manager import WorldManager
 from ..runtime.appearance import agent_sprite
 from ..runtime.views import agent_detail
-from .schemas import CreateWorldRequest, SpeedRequest, StepRequest
+from .schemas import CreateWorldRequest, CredentialsRequest, SpeedRequest, StepRequest
 
 log = logging.getLogger("aisim")
 
@@ -64,14 +67,17 @@ def preview_setup(config, body: SetupSettings) -> dict[str, Any]:
         warnings.append("There is not enough food for everyone: expect hunger, competition and possibly deaths.")
     if economy["work_hours_for_food_per_day"] > 8:
         warnings.append("Agents must work most of the day just to afford food.")
-    if body.provider == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
-        warnings.append("No ANTHROPIC_API_KEY on the server: Claude agents will fall back to rule-based decisions.")
+    typed_key = bool(body.api_key and body.api_key.get_secret_value().strip())
+    if body.provider in credentials.ENV_VARS and not typed_key and credentials.env_key(body.provider) is None:
+        env_name = credentials.ENV_VARS[body.provider][0]
+        warnings.append(f"No API key entered and no {env_name} on the server: LLM agents will fall back to "
+                        "rule-based decisions.")
     n_llm = 0 if body.provider == "none" else (body.population if body.llm_agents is None
                                                else min(body.llm_agents, body.population))
-    if body.provider == "anthropic" and n_llm and config.llm.maximum_world_spend is None:
-        warnings.append("No spend cap: Claude usage is unlimited for this world.")
+    if body.provider in ("anthropic", "openrouter") and n_llm and config.llm.maximum_world_spend is None:
+        warnings.append("No spend cap: LLM usage is unlimited for this world.")
     return {"economy": economy, "traits": traits, "agents": agents, "llm_agents": n_llm,
-            "model": config.llm.model if body.provider == "anthropic" else None,
+            "model": config.llm.model if body.provider in ("anthropic", "openrouter", "claude_code") else None,
             "max_world_spend": config.llm.maximum_world_spend, "world_size": config.world.width,
             "warnings": warnings}
 
@@ -122,9 +128,10 @@ def create_app(settings: Settings | None = None, decider_factory=None) -> FastAP
     # ---------------------------------------------------------------- meta
     @app.get("/api/health")
     async def health(request: Request) -> dict[str, Any]:
+        keys = credentials.server_keys()
         return {"status": "ok", "worlds_loaded": len(request.app.state.manager.runners),
                 "database": "sqlite" if request.app.state.db.is_sqlite else "postgresql",
-                "anthropic_key_configured": bool(os.environ.get("ANTHROPIC_API_KEY"))}
+                "anthropic_key_configured": keys["anthropic"], "server_keys": keys}
 
     @app.get("/api/presets")
     async def presets() -> list[dict[str, str]]:
@@ -149,7 +156,10 @@ def create_app(settings: Settings | None = None, decider_factory=None) -> FastAP
     @app.get("/api/setup/options")
     async def setup_options_route() -> dict[str, Any]:
         opts = setup_options()
-        opts["anthropic_key_configured"] = bool(os.environ.get("ANTHROPIC_API_KEY"))
+        keys = credentials.server_keys()
+        opts["anthropic_key_configured"] = keys["anthropic"]
+        opts["server_keys"] = keys  # whether a key exists on the server, never the key
+        opts["claude_cli"] = await cli_status()
         return opts
 
     @app.post("/api/setup/preview")
@@ -163,7 +173,9 @@ def create_app(settings: Settings | None = None, decider_factory=None) -> FastAP
     @app.post("/api/setup/worlds", status_code=201, dependencies=[Depends(require_token)])
     async def setup_world(body: SetupSettings, mgr: WorldManager = Depends(manager)):
         try:
-            runner = await mgr.create_world("default", settings_to_overrides(body), body.name, start=body.start)
+            api_key = body.api_key.get_secret_value() if body.api_key else None
+            runner = await mgr.create_world("default", settings_to_overrides(body), body.name, start=body.start,
+                                            api_key=api_key)
         except ValueError as exc:
             raise HTTPException(422, str(exc))
         return runner.view()
@@ -184,7 +196,9 @@ def create_app(settings: Settings | None = None, decider_factory=None) -> FastAP
     @app.post("/api/worlds", status_code=201, dependencies=[Depends(require_token)])
     async def create_world(body: CreateWorldRequest, mgr: WorldManager = Depends(manager)):
         try:
-            runner = await mgr.create_world(body.preset, body.overrides, body.name, start=body.start)
+            api_key = body.api_key.get_secret_value() if body.api_key else None
+            runner = await mgr.create_world(body.preset, body.overrides, body.name, start=body.start,
+                                            api_key=api_key)
         except FileNotFoundError:
             raise HTTPException(404, "preset not found")
         except ValueError as exc:
@@ -242,6 +256,14 @@ def create_app(settings: Settings | None = None, decider_factory=None) -> FastAP
         view = runner.view()
         view["metrics"] = last.metrics if last else None
         return view
+
+    @app.post("/api/worlds/{world_id}/credentials", dependencies=[Depends(require_token)])
+    async def set_credentials(world_id: str, body: CredentialsRequest, mgr: WorldManager = Depends(manager)):
+        """Give a world a provider key (e.g. after a restart): kept in memory, never stored or returned."""
+        runner = await mgr.set_api_key(world_id, body.api_key.get_secret_value())
+        if runner is None:
+            raise HTTPException(404, "world not found")
+        return {"llm": runner.decider.stats()}
 
     @app.post("/api/worlds/{world_id}/speed", dependencies=[Depends(require_token)])
     async def speed(world_id: str, body: SpeedRequest, mgr: WorldManager = Depends(manager)):

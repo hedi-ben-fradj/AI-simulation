@@ -83,9 +83,9 @@ class InvalidOutput(Exception):
 def parse_decision(text: str) -> DecisionOutput:
     """Parse and validate model output; raises :class:`InvalidOutput`."""
     text = text.strip()
-    if text.startswith("```"):
-        text = text.strip("`")
-        text = text[text.find("{"):]
+    if not text.startswith("{") and "{" in text:
+        # Prose or a code fence around the object (providers without structured output).
+        text = text[text.find("{"): text.rfind("}") + 1]
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
