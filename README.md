@@ -42,7 +42,8 @@ print(result.metrics)
 ```
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design,
-[`docs/LLM.md`](docs/LLM.md) for Claude-driven agents, and
+[`docs/LLM.md`](docs/LLM.md) for Claude-driven agents,
+[`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) for controlled experiments, and
 [`docs/RULES.md`](docs/RULES.md) for every world rule and formula.
 
 ## Running the full application

@@ -48,7 +48,7 @@ export const api = {
   health: () => request<{ status: string; anthropic_key_configured: boolean; database: string }>('/api/health'),
   presets: () => request<Preset[]>('/api/presets'),
   preset: (id: string) => request<Record<string, any>>(`/api/presets/${id}`),
-  worlds: () => request<WorldSummary[]>('/api/worlds'),
+  worlds: (includeExperiments = true) => request<WorldSummary[]>(`/api/worlds?include_experiments=${includeExperiments}`),
   createWorld: (body: { preset: string; name?: string; overrides?: Record<string, unknown>; start?: boolean }) =>
     post<WorldView>('/api/worlds', body),
   world: (id: string) => request<WorldView>(`/api/worlds/${id}`),
@@ -71,6 +71,12 @@ export const api = {
     request<{ tick: number; agent_id: string; other_id: string; reason: string; positive: boolean; trust_before: number; trust_after: number }[]>(
       `/api/worlds/${id}/trust${agent ? `?agent=${agent}` : ''}`),
   analysis: <T>(id: string) => request<T>(`/api/worlds/${id}/analysis`),
+  experimentTemplates: () => request<any[]>('/api/experiment-templates'),
+  experiments: () => request<any[]>('/api/experiments'),
+  experiment: (id: string) => request<any>(`/api/experiments/${id}`),
+  createExperiment: (spec: unknown) => post<any>('/api/experiments', spec),
+  cancelExperiment: (id: string) => post<any>(`/api/experiments/${id}/cancel`),
+  deleteExperiment: (id: string) => request<void>(`/api/experiments/${id}`, { method: 'DELETE' }),
   metrics: (id: string, every = 1) => request<Metrics[]>(`/api/worlds/${id}/metrics?every=${every}`),
   llm: (id: string) => request<{ live: Record<string, any>; summary: Record<string, any>; recent: any[] }>(
     `/api/worlds/${id}/llm`),

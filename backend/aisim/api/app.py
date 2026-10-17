@@ -53,7 +53,12 @@ def create_app(settings: Settings | None = None, decider_factory=None) -> FastAP
         app.state.db, app.state.repo, app.state.hub, app.state.manager = db, repo, hub, manager
         restored = await manager.load_all()
         log.info("restored %d world(s) from %s", restored, db.url.split("@")[-1])
+        from ..experiments.service import ExperimentService
+
+        app.state.experiments = ExperimentService(repo)
+        app.state.experiments.recover_after_restart()
         yield
+        await app.state.experiments.shutdown()
         await manager.shutdown()
         db.dispose()
 
@@ -275,4 +280,7 @@ def create_app(settings: Settings | None = None, decider_factory=None) -> FastAP
         finally:
             await hub.unsubscribe(world_id, websocket)
 
+    from .experiments import build_router
+
+    app.include_router(build_router(require_token))
     return app

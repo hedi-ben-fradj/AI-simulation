@@ -232,6 +232,8 @@ export interface WorldSummary {
   population?: number;
   llm_spend_usd: number;
   created_at: string;
+  experiment_id?: string | null;
+  condition?: string | null;
 }
 
 export interface Preset {
