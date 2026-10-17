@@ -92,6 +92,8 @@ class TickResult:
     trust_changes: list[dict[str, Any]] = field(default_factory=list)
     deaths: list[dict[str, Any]] = field(default_factory=list)
     metrics: dict[str, Any] = field(default_factory=dict)
+    # (message id, tick) for every message an agent read this tick.
+    reads: list[tuple[str, int]] = field(default_factory=list)
 
 
 class Simulation:
@@ -330,11 +332,12 @@ class Simulation:
         world.in_flight_messages = still
         for agent in world.alive_agents():
             before = len(agent.inbox)
+            expired = [m.id for m in agent.inbox if world.tick - m.deliver_tick > cc.message_expiry_ticks]
             agent.inbox = [m for m in agent.inbox if world.tick - m.deliver_tick <= cc.message_expiry_ticks]
             if len(agent.inbox) < before:
                 self.emit("message_expired", f"{before - len(agent.inbox)} unread message(s) expired for {agent.name}",
-                          agent=agent, data={"count": before - len(agent.inbox)}, visibility="system",
-                          importance=0.1)
+                          agent=agent, data={"count": before - len(agent.inbox), "message_ids": expired},
+                          visibility="system", importance=0.1)
 
     def _expire_offers(self) -> None:
         for offer in self.world.trade_offers.values():
@@ -433,6 +436,7 @@ class Simulation:
     def _read_message(self, agent: Agent, msg: Message) -> None:
         cc = self.config.communication
         msg.read_tick = self.world.tick
+        self._result.reads.append((msg.id, self.world.tick))
         self.spend_energy(agent, cc.receiver_energy_per_token * msg.tokens)
         sender = self.world.agents.get(msg.sender_id)
         if sender is not None:

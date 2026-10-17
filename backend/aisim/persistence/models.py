@@ -93,6 +93,8 @@ class MessageRow(Base):
     deliver_tick: Mapped[int] = mapped_column(Integer)
     token_cost: Mapped[float] = mapped_column(Float)
     existential: Mapped[bool] = mapped_column(Boolean, default=False)
+    # When the recipient read it (None: not yet, or never: expired or dropped unread).
+    read_tick: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class DecisionRow(Base):

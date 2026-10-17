@@ -28,7 +28,8 @@ from ..persistence import Database, Repository
 from ..runtime.hub import Hub
 from ..runtime.manager import WorldManager
 from ..runtime.appearance import agent_sprite
-from ..runtime.views import agent_detail
+from ..analysis.conversations import detect_conversations
+from ..runtime.views import CONVERSATION_EVENT_TYPES, agent_detail, conversation_view
 from .schemas import CreateWorldRequest, CredentialsRequest, SpeedRequest, StepRequest
 
 log = logging.getLogger("aisim")
@@ -305,6 +306,36 @@ def create_app(settings: Settings | None = None, decider_factory=None) -> FastAP
     async def messages(world_id: str, agent: str | None = None, limit: int = Query(100, le=1000),
                        r: Repository = Depends(repo)):
         return r.messages(world_id, agent, limit)
+
+    @app.get("/api/worlds/{world_id}/conversations")
+    async def conversations(world_id: str, agent: str | None = None, limit: int = Query(60, ge=1, le=500),
+                            mgr: WorldManager = Depends(manager), r: Repository = Depends(repo)):
+        """Conversation threads (pairs and group chats), most recent first."""
+        runner = await runner_or_404(world_id, mgr)
+        tpd = runner.sim.config.simulation.ticks_per_day
+        gap = max(4, tpd // 3)
+        threads = detect_conversations(r.messages(world_id, agent, limit=5000), gap_ticks=gap)
+        agents = runner.sim.world.agents
+        for t in threads:
+            t["time"] = runner.sim.time_label(t["first_tick"])
+            t["last_time"] = runner.sim.time_label(t["last_tick"])
+            t["names"] = [agents[a].name if a in agents else a for a in t["participants"]]
+        return {"conversations": threads[:limit], "gap_ticks": gap, "tick": runner.sim.world.tick}
+
+    @app.get("/api/worlds/{world_id}/conversation")
+    async def conversation(world_id: str, agents: str = Query(..., description="comma-separated agent ids"),
+                           limit: int = Query(400, ge=1, le=2000), mgr: WorldManager = Depends(manager),
+                           r: Repository = Depends(repo)):
+        """Every message among these agents (each sender and recipient in the set), plus their interactions."""
+        runner = await runner_or_404(world_id, mgr)
+        ids = list(dict.fromkeys(a.strip() for a in agents.split(",") if a.strip()))
+        unknown = [a for a in ids if a not in runner.sim.world.agents]
+        if len(ids) < 2 or len(ids) > 20 or unknown:
+            raise HTTPException(422, "give 2–20 known agent ids" + (f" (unknown: {', '.join(unknown)})" if unknown else ""))
+        messages = r.messages_among(world_id, ids, limit)
+        intentions = r.intentions(world_id, {(m["sender_id"], m["sent_tick"]) for m in messages})
+        events = r.events_among(world_id, ids, CONVERSATION_EVENT_TYPES)
+        return conversation_view(runner.sim, ids, messages, intentions, events)
 
     @app.get("/api/worlds/{world_id}/decisions")
     async def decisions(world_id: str, agent: str | None = None, limit: int = Query(50, le=1000),

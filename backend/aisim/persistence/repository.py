@@ -10,7 +10,7 @@ import threading
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import delete, func, insert, select
+from sqlalchemy import delete, func, insert, select, update
 
 from ..engine.simulation import Simulation, TickResult
 from .db import Database
@@ -81,6 +81,9 @@ class Repository:
                 "world_id": wid, "message_id": m.id, "sender_id": m.sender_id, "recipient_id": m.recipient_id,
                 "content": m.content, "tokens": m.tokens, "sent_tick": m.sent_tick, "deliver_tick": m.deliver_tick,
                 "token_cost": m.token_cost, "existential": m.existential} for m in result.messages])
+            for message_id, read_tick in result.reads:
+                s.execute(update(MessageRow).where(MessageRow.world_id == wid, MessageRow.message_id == message_id)
+                          .values(read_tick=read_tick))
             _bulk(s, DecisionRow, [{
                 "world_id": wid, "tick": d.tick, "agent_id": d.agent_id, "source": d.source, "valid": d.valid,
                 "reason": d.reason, "applied_action": d.applied_action, "visible_intention": d.visible_intention,
@@ -159,6 +162,9 @@ class Repository:
                                (TrustChangeRow, TrustChangeRow.tick), (TraitHistoryRow, TraitHistoryRow.tick),
                                (MetricRow, MetricRow.tick), (LLMUsageRow, LLMUsageRow.tick)):
                 s.execute(delete(table).where(table.world_id == world_id, col >= tick))
+            # Reads that happened after the snapshot are replayed too.
+            s.execute(update(MessageRow).where(MessageRow.world_id == world_id, MessageRow.read_tick >= tick)
+                      .values(read_tick=None))
             world = s.get(WorldRow, world_id)
             if world is not None:
                 world.tick = tick
@@ -192,7 +198,41 @@ class Repository:
         return [{
             "id": r.message_id, "sender_id": r.sender_id, "recipient_id": r.recipient_id, "content": r.content,
             "tokens": r.tokens, "sent_tick": r.sent_tick, "deliver_tick": r.deliver_tick,
-            "token_cost": r.token_cost, "existential": r.existential} for r in reversed(rows)]
+            "token_cost": r.token_cost, "existential": r.existential, "read_tick": r.read_tick} for r in reversed(rows)]
+
+    def messages_among(self, world_id: str, agent_ids: list[str], limit: int = 500) -> list[dict[str, Any]]:
+        """Messages whose sender and recipient are both in ``agent_ids`` (oldest first)."""
+        with self.db.session() as s:
+            q = (select(MessageRow).where(MessageRow.world_id == world_id, MessageRow.sender_id.in_(agent_ids),
+                                          MessageRow.recipient_id.in_(agent_ids))
+                 .order_by(MessageRow.id.desc()).limit(limit))
+            rows = list(s.scalars(q))
+        return [{
+            "id": r.message_id, "sender_id": r.sender_id, "recipient_id": r.recipient_id, "content": r.content,
+            "tokens": r.tokens, "sent_tick": r.sent_tick, "deliver_tick": r.deliver_tick,
+            "token_cost": r.token_cost, "existential": r.existential, "read_tick": r.read_tick} for r in reversed(rows)]
+
+    def intentions(self, world_id: str, agent_ticks: set[tuple[str, int]]) -> dict[tuple[str, int], str]:
+        """Visible intention of each (agent, tick) decision, where one was recorded."""
+        if not agent_ticks:
+            return {}
+        agents = {a for a, _ in agent_ticks}
+        ticks = {t for _, t in agent_ticks}
+        with self.db.session() as s:
+            rows = s.execute(select(DecisionRow.agent_id, DecisionRow.tick, DecisionRow.visible_intention)
+                             .where(DecisionRow.world_id == world_id, DecisionRow.agent_id.in_(agents),
+                                    DecisionRow.tick.in_(ticks))).all()
+        return {(a, t): text for a, t, text in rows if (a, t) in agent_ticks and text}
+
+    def events_among(self, world_id: str, agent_ids: list[str], types: list[str],
+                     limit: int = 300) -> list[dict[str, Any]]:
+        """Events of the given types where both the actor and the target are in ``agent_ids``."""
+        with self.db.session() as s:
+            q = (select(EventRow).where(EventRow.world_id == world_id, EventRow.type.in_(types),
+                                        EventRow.agent_id.in_(agent_ids), EventRow.target_id.in_(agent_ids))
+                 .order_by(EventRow.id.desc()).limit(limit))
+            rows = list(s.scalars(q))
+        return [_event_dict(r) for r in reversed(rows)]
 
     def decisions(self, world_id: str, agent_id: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
         with self.db.session() as s:
