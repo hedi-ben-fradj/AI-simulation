@@ -13,22 +13,12 @@ runs migrations at startup), `frontend` (nginx serving the build and proxying
 
 ## Manual setup
 
-```bash
-# PostgreSQL
-createuser -P aisim && createdb -O aisim aisim
-
-# Backend
-cd backend
-python -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev]"
-export DATABASE_URL=postgresql+psycopg://aisim:aisim@localhost:5432/aisim
-export ANTHROPIC_API_KEY=sk-ant-...          # only needed for LLM agents
-python -m aisim                              # HOST/PORT/LOG_LEVEL honoured
-
-# Frontend
-cd frontend && npm ci && npm run dev         # dev server on :5173
-npm run build                                # static files in dist/ (serve behind a proxy like nginx.conf)
-```
+See **Run it on your computer** in the README for step-by-step instructions
+(`./run.sh`, or the manual commands for macOS/Linux and Windows). In short: the
+backend serves the built frontend (`frontend/dist`) on the same port, so a
+production-style local install is `npm run build` once plus `python -m aisim`.
+For development, `./run.sh --dev` adds the Vite dev server with hot reload on
+:5173, proxying `/api` and `/ws` to the backend.
 
 ## Configuration (environment)
 
@@ -41,6 +31,10 @@ npm run build                                # static files in dist/ (serve behi
 | `AISIM_CORS_ORIGINS` | `*` | comma-separated allowed origins |
 | `HOST` / `PORT` | `127.0.0.1` / `8000` | bind address |
 | `LOG_LEVEL` | `INFO` | `DEBUG` logs every tick; slow ticks (>10 s) log a warning |
+| `AISIM_STATIC_DIR` | `frontend/dist` if built | directory of the built UI to serve on the API port |
+
+`python -m aisim` also reads `.env` from the current directory or `backend/`
+(existing environment variables take precedence).
 
 Simulation parameters live in YAML presets (`backend/aisim/config/presets/`) and
 per-world overrides; see `docs/RULES.md` and `docs/LLM.md`.

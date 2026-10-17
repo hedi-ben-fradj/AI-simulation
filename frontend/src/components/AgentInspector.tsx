@@ -149,7 +149,7 @@ export function AgentInspector({ worldId, agentId, tick, agentNames }: Props) {
           <Stack gap={4}>
             {traits.map(([t, v]) => {
               const changes = agent.trait_history.filter((h) => h.trait === t);
-              const initial = changes.length ? changes[0].old : v;
+              const initial = agent.initial_personality?.[t] ?? (changes.length ? changes[0].old : v);
               const delta = v - initial;
               return (
                 <Tooltip key={t} label={agent.trait_descriptions[t]} position="left">
@@ -221,7 +221,7 @@ export function AgentInspector({ worldId, agentId, tick, agentNames }: Props) {
               {agent.life_summary.slice(-5).map((l, i) => <Text key={i} size="xs">{l}</Text>)}
               <Text size="xs" fw={600} mt={4}>Working memory ({agent.memories.length} held, {agent.memory_archive_count} archived)</Text>
               {agent.memories.slice(0, 40).map((m) => (
-                <Text key={m.id} size="xs">
+                <Text key={m.id} size="xs" component="div">
                   <Badge size="xs" variant="light" mr={4}>{m.kind}</Badge>
                   <Text span size="xs" c="dimmed">t{m.tick} · {m.importance.toFixed(1)} </Text>
                   {m.content}

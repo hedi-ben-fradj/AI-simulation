@@ -241,3 +241,31 @@ def test_pause_with_pending_llm_decisions_is_consistent(db_url):
     with make_client(db_url) as c:
         assert c.get(f"/api/worlds/{wid}").json()["tick"] == tick
         assert c.post(f"/api/worlds/{wid}/step").json()["tick"] == tick + 1
+
+
+def test_serves_built_frontend_with_spa_fallback(db_url, tmp_path):
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<html>app</html>")
+    (dist / "assets" / "app.js").write_text("console.log(1)")
+    with TestClient(create_app(Settings(database_url=db_url, static_dir=dist))) as c:
+        assert c.get("/").text == "<html>app</html>"
+        assert c.get("/assets/app.js").text == "console.log(1)"
+        assert c.get("/some/client/route").text == "<html>app</html>"  # SPA fallback
+        assert c.get("/../../etc/passwd").text == "<html>app</html>"  # no path traversal
+        assert c.get("/api/health").json()["status"] == "ok"
+        assert c.get("/api/nope").status_code == 404
+
+
+def test_dotenv_loading(tmp_path, monkeypatch):
+    from aisim.__main__ import load_dotenv
+
+    (tmp_path / ".env").write_text("# comment\nAISIM_TEST_A=1\nexport AISIM_TEST_B='two'\nAISIM_TEST_C=\nPATH=nope\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("AISIM_TEST_A", raising=False)
+    monkeypatch.delenv("AISIM_TEST_B", raising=False)
+    load_dotenv()
+    import os
+
+    assert os.environ["AISIM_TEST_A"] == "1" and os.environ["AISIM_TEST_B"] == "two"
+    assert "AISIM_TEST_C" not in os.environ and os.environ["PATH"] != "nope"  # never overrides

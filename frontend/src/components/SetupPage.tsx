@@ -53,7 +53,17 @@ const pretty = (s: string) => s.replace(/_/g, ' ');
 function loadStored(): Settings {
   try {
     const raw = localStorage.getItem(STORE_KEY);
-    return raw ? { ...DEFAULTS, ...JSON.parse(raw) } : DEFAULTS;
+    if (!raw) return DEFAULTS;
+    // Keep only known settings of the expected type: the server rejects unknown keys,
+    // so a value saved by an older version must not break the page.
+    const stored = JSON.parse(raw) as Record<string, unknown>;
+    const merged: Record<string, unknown> = { ...DEFAULTS };
+    for (const [key, def] of Object.entries(DEFAULTS)) {
+      const v = stored[key];
+      if (v === undefined) continue;
+      if (def === null || v === null || typeof v === typeof def) merged[key] = v;
+    }
+    return merged as unknown as Settings;
   } catch {
     return DEFAULTS;
   }

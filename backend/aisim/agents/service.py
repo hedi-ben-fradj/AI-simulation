@@ -48,7 +48,9 @@ class LLMDecider:
         self.system_prompt = build_system_prompt(config)
         self.schema = decision_json_schema()
         self.semaphore = asyncio.Semaphore(max(1, self.cfg.max_concurrent_requests))
-        self.limiter = RateLimiter(self.cfg.requests_per_minute)
+        # The offline mock makes no real API calls, so it is not rate-limited.
+        self.limiter = RateLimiter(self.cfg.requests_per_minute) if provider.name != "mock" else None
+        self.rate_limited = 0
         self.input_price, self.output_price = prices_for(
             provider.model, self.cfg.input_price_per_mtok, self.cfg.output_price_per_mtok)
         if provider.name == "mock" and self.cfg.input_price_per_mtok is None:
@@ -82,7 +84,7 @@ class LLMDecider:
             "failures": self.failures, "timeouts": self.timeouts, "fallbacks": self.fallbacks,
             "spend_usd": round(self.spend_usd, 6), "max_world_spend": self.cfg.maximum_world_spend,
             "max_agent_daily_spend": self.cfg.maximum_agent_daily_spend, "budget_exhausted": self.budget_exhausted,
-            "queue_depth": self.in_flight, "effort": self.cfg.effort,
+            "queue_depth": self.in_flight, "effort": self.cfg.effort, "rate_limited": self.rate_limited,
             "last_context_tokens": self.last_context_tokens,
         }
 
@@ -167,7 +169,13 @@ class LLMDecider:
     async def _call(self, agent_id: str, tick: int, request: LLMRequest
                     ) -> tuple[ActionProposal | None, dict[str, Any]]:
         async with self.semaphore:
-            await self.limiter.acquire()
+            if self.limiter is not None and not self.limiter.try_acquire():
+                # Waiting longer than half the decision window would stall the whole
+                # tick; fall back now instead and let the slot refill.
+                if self.limiter.wait_time() > self.config.simulation.decision_timeout_seconds / 2:
+                    self.rate_limited += 1
+                    return None, {"fallback_reason": "rate_limited"}
+                await self.limiter.acquire()
             self.in_flight += 1
             self.requests += 1
             t0 = time.monotonic()

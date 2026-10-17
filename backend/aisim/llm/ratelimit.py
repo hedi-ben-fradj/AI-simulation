@@ -26,6 +26,11 @@ class RateLimiter:
             return True
         return False
 
+    def wait_time(self) -> float:
+        """Seconds until a request slot is available (0 if one is free now)."""
+        self._refill()
+        return 0.0 if self.tokens >= 1 else (1 - self.tokens) / self.rate
+
     async def acquire(self) -> None:
         async with self._lock:
             while True:

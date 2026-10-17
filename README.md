@@ -13,21 +13,164 @@ actually happens.
 > or sentient; it observes behaviour that emerges from defined rules, agent
 > architectures, environments and model decisions.
 
-## Quick start
+## Run it on your computer
+
+The app runs entirely on your machine: a Python server (simulation + API) and a
+web page you open in your browser. No account, database server or API key is
+needed for the default rule-based agents.
+
+### 1. Install the prerequisites (once)
+
+| Tool | Version | Check with | Get it |
+|---|---|---|---|
+| Git | any | `git --version` | https://git-scm.com/downloads |
+| Python | 3.11, 3.12 or 3.13 | `python3 --version` (Windows: `py --version`) | https://www.python.org/downloads/ — on Windows tick **"Add python.exe to PATH"** |
+| Node.js | 20 or newer (LTS) | `node --version` | https://nodejs.org |
+
+About 1 GB of free disk space is needed for dependencies.
+
+### 2. Get the code
 
 ```bash
-ANTHROPIC_API_KEY=sk-ant-...  docker compose up --build    # the key is optional
-# open http://localhost:8080 → the setup page: choose the number of agents (2+),
-# resource abundance (very scarce … very abundant), personality mode, rules → Start
+git clone https://github.com/hedi-ben-fradj/AI-simulation.git
+cd AI-simulation
+git checkout claude/dreamy-einstein-uwu2gt   # the branch with the app (skip once it is merged into main)
 ```
 
-Without Docker see [`docs/OPERATIONS.md`](docs/OPERATIONS.md). Engine only:
+### 3a. Start it — one command (macOS and Linux)
+
+```bash
+./run.sh
+```
+
+The first run takes a few minutes: it creates a Python environment in
+`backend/.venv`, installs the backend and frontend dependencies, builds the web
+page, and starts the server. When you see
+
+```
+==> Starting on http://localhost:8000  (Ctrl+C to stop)
+```
+
+open **http://localhost:8000**. Later runs start in seconds. Stop with **Ctrl+C**;
+your worlds are saved (in `backend/aisim.db`) and reappear the next time.
+
+### 3b. Start it — step by step (Windows, or if you prefer doing it by hand)
+
+Run these from the `AI-simulation` folder. No virtual-environment activation is
+needed; the commands call the environment's Python directly.
+
+**macOS / Linux**
+
+```bash
+# Backend: create an isolated Python environment and install the server
+python3 -m venv backend/.venv
+backend/.venv/bin/python -m pip install --upgrade pip
+backend/.venv/bin/python -m pip install -e "backend[dev]"
+
+# Frontend: install and build the web page (once, and after updating the code)
+cd frontend
+npm ci
+npm run build
+cd ..
+
+# Start (serves the API and the web page on one port)
+cd backend
+.venv/bin/python -m aisim
+```
+
+**Windows (PowerShell)**
+
+```powershell
+# Backend
+py -3 -m venv backend\.venv
+backend\.venv\Scripts\python -m pip install --upgrade pip
+backend\.venv\Scripts\python -m pip install -e "backend[dev]"
+
+# Frontend
+cd frontend
+npm ci
+npm run build
+cd ..
+
+# Start
+cd backend
+.venv\Scripts\python -m aisim
+```
+
+Then open **http://localhost:8000**. To start again later, only the last two
+lines are needed.
+
+### 3c. Start it — with Docker (alternative)
+
+If you have Docker Desktop, this runs the app with a PostgreSQL database and needs
+no Python or Node.js:
+
+```bash
+docker compose up --build        # then open http://localhost:8080
+```
+
+### 4. Use it
+
+1. The app opens on **Set up a simulation**. Choose the number of agents (2 or
+   more), move the **Resources** slider between *Very scarce* and *Very abundant*,
+   pick **Identical** personalities (everyone 50%) or **Randomised** with a
+   deviation, and adjust the other settings. The right-hand panel previews the
+   economy and every agent's starting traits.
+2. Click **Start simulation**. Click an agent on the map (or in the list) to
+   inspect it; use **Pause / Step / +1 day / speed** at the top.
+3. The **Society**, **Mind** and **Analytics** tabs show relationships, whether
+   traits drive behaviour, and population statistics. **Experiments** compares
+   settings across several random seeds.
+
+### Optional: let Claude decide for the agents
+
+1. Get an API key at https://console.anthropic.com (API usage is billed by Anthropic).
+2. Copy `backend/.env.example` to `backend/.env` and set
+   `ANTHROPIC_API_KEY=sk-ant-...` (the server reads `.env` automatically; the key
+   never reaches the browser).
+3. Restart the server, and on the setup page choose **Agent minds → Claude**. Keep
+   the **spend cap** set; the **LLM usage** tab shows requests and cost.
+
+Tip: **Mock LLM (offline test)** exercises the same pipeline with no key and no cost.
+
+### Optional: PostgreSQL instead of the built-in SQLite file
+
+Create a database and put its address in `backend/.env`:
+
+```
+DATABASE_URL=postgresql+psycopg://USER:PASSWORD@localhost:5432/aisim
+```
+
+### For developers: hot reload and tests
+
+```bash
+./run.sh --dev                    # API on :8000 + auto-reloading UI on http://localhost:5173
+# (manually: start the backend as above, then `cd frontend && npm run dev`)
+
+cd backend && .venv/bin/python -m pytest -q          # backend tests
+cd frontend && npm run typecheck && npm test         # frontend checks
+```
+
+### Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `Python 3.11 or newer is required` / `python3: command not found` | Install Python from python.org. With several versions installed: `PYTHON=python3.12 ./run.sh`. |
+| `Node.js … is too old` or `npm ci` fails | Install Node.js 20 LTS or newer, then delete `frontend/node_modules` and retry. |
+| `address already in use` / port 8000 busy | Use another port: `PORT=8001 ./run.sh` (or `PORT=8001` in `backend/.env`) and open that port. |
+| Page shows `{"detail":"Not Found"}` or the log says *frontend not built* | Run `npm run build` in `frontend/` (run.sh does this automatically). |
+| Page does not update after pulling new code | Rebuild the UI (`./run.sh` does it when sources changed) and hard-refresh the browser. |
+| Claude agents behave exactly like rule agents | The key is missing or invalid: check `backend/.env`, restart, and look at the **LLM usage** tab for errors. |
+| `pip install` fails on Windows with a compiler error | Use Python 3.11–3.13 from python.org (not a pre-release). |
+| Start from a clean slate | Stop the server and delete `backend/aisim.db`. |
+
+### Engine only (no web page)
 
 ```python
 from aisim.config import load_config
 from aisim.engine import Simulation
 
-sim = Simulation.create(load_config("scarcity"))
+sim = Simulation.create(load_config("default", {"resource_level": "scarce", "simulation": {"population": 3}}))
 for _ in range(24 * 7):          # one simulated week (24 ticks/day)
     result = sim.step()           # rule-based agents
 print(result.metrics)

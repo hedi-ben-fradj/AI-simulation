@@ -71,7 +71,8 @@ historical summaries — and lower-priority items are dropped first, with an
 | World spend cap reached | rule fallback (`world_budget_exhausted`) |
 | Agent daily cap reached | rule fallback (`agent_daily_budget_exhausted`) |
 | More LLM requests than `max_queue_size` | excess get rule fallback (`backpressure`) |
-| Concurrency | at most `max_concurrent_requests` in flight; `requests_per_minute` token bucket |
+| Concurrency | at most `max_concurrent_requests` in flight; `requests_per_minute` token bucket (the offline mock is not rate-limited) |
+| No request slot free within half the decision window | rule fallback (`rate_limited`) instead of stalling the tick |
 | No answer within `decision_timeout_seconds` | request cancelled; fallback (`timeout`), or idle if `fallback_on_timeout: false` |
 | API error (rate limit, network, 5xx, auth, bad request) | SDK retries (`max_retries`), then fallback `llm_error:<kind>` |
 | Malformed / schema-invalid output | fallback (`invalid_output`) |

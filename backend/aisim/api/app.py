@@ -9,10 +9,12 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from ..config import list_presets, load_config
 from ..config.levels import describe_economy
@@ -30,7 +32,8 @@ log = logging.getLogger("aisim")
 
 class Settings:
     def __init__(self, database_url: str | None = None, auto_resume: bool | None = None,
-                 cors_origins: list[str] | None = None, api_token: str | None = None, migrate: bool = True):
+                 cors_origins: list[str] | None = None, api_token: str | None = None, migrate: bool = True,
+                 static_dir: Path | None = None):
         self.database_url = database_url or os.environ.get("DATABASE_URL")
         if auto_resume is None:
             auto_resume = os.environ.get("AISIM_AUTO_RESUME", "false").lower() in ("1", "true", "yes")
@@ -39,6 +42,7 @@ class Settings:
         self.cors_origins = origins
         self.api_token = api_token if api_token is not None else os.environ.get("AISIM_API_TOKEN") or None
         self.migrate = migrate
+        self.static_dir = static_dir if static_dir is not None else default_static_dir()
 
 
 def preview_setup(config, body: SetupSettings) -> dict[str, Any]:
@@ -218,13 +222,16 @@ def create_app(settings: Settings | None = None, decider_factory=None) -> FastAP
         return runner.view()
 
     @app.post("/api/worlds/{world_id}/step", dependencies=[Depends(require_token)])
-    async def step(world_id: str, body: StepRequest | None = None, mgr: WorldManager = Depends(manager)):
+    async def step(world_id: str, request: Request, body: StepRequest | None = None,
+                   mgr: WorldManager = Depends(manager)):
         runner = await runner_or_404(world_id, mgr)
         if runner.status == "running":
             raise HTTPException(409, "pause the world before stepping manually")
         count = body.count if body else 1
         last = None
-        for _ in range(count):
+        for i in range(count):
+            if i and await request.is_disconnected():
+                break  # the caller gave up; don't keep stepping for nobody
             try:
                 last = await runner.step()
             except RuntimeError as exc:
@@ -338,4 +345,31 @@ def create_app(settings: Settings | None = None, decider_factory=None) -> FastAP
     from .experiments import build_router
 
     app.include_router(build_router(require_token))
+    _mount_frontend(app, settings.static_dir)
     return app
+
+
+def default_static_dir() -> Path | None:
+    """The built frontend (``frontend/dist``) next to the backend, if it exists."""
+    env = os.environ.get("AISIM_STATIC_DIR")
+    if env:
+        return Path(env)
+    candidate = Path(__file__).resolve().parents[3] / "frontend" / "dist"
+    return candidate if (candidate / "index.html").exists() else None
+
+
+def _mount_frontend(app: FastAPI, static_dir: Path | None) -> None:
+    """Serve the single-page app so one process on one port runs everything."""
+    if static_dir is None or not (static_dir / "index.html").exists():
+        return
+    root = static_dir.resolve()
+    index = root / "index.html"
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def spa(path: str):
+        if path.startswith(("api/", "ws/")):
+            raise HTTPException(404, "not found")
+        target = (root / path).resolve()
+        if path and target.is_file() and target.is_relative_to(root):
+            return FileResponse(target)
+        return FileResponse(index)

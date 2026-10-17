@@ -60,8 +60,13 @@ class Database:
 
     def migrate(self) -> None:
         """Upgrade the schema to the latest Alembic revision."""
+        import logging
+
         from alembic import command
         from alembic.config import Config
+
+        # Alembic logs its plugin setup at INFO; only surface problems.
+        logging.getLogger("alembic").setLevel(logging.WARNING)
 
         cfg = Config()
         cfg.set_main_option("script_location", str(MIGRATIONS_DIR))

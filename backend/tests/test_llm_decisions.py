@@ -291,3 +291,20 @@ async def test_mock_provider_is_deterministic():
             except LLMError:
                 out.append("err")
     assert out_a == out_b
+
+
+async def test_rate_limit_falls_back_instead_of_stalling_the_tick():
+    """Regression: a depleted limiter made every tick wait the full decision window."""
+    from aisim.llm.ratelimit import RateLimiter
+
+    sim = mock_sim()
+    sim.config.simulation.decision_timeout_seconds = 10
+    decider = LLMDecider.from_config(sim.config, "w")
+    assert decider.limiter is None  # the offline mock is never rate-limited
+    decider.limiter = RateLimiter(per_minute=1)  # as if this were a real provider
+    t0 = time.monotonic()
+    records = await run_ticks(sim, decider, 1)
+    assert time.monotonic() - t0 < 1.0
+    assert sum(r.source == "llm" for r in records) == 1
+    assert sum(r.fallback_reason == "rate_limited" for r in records) == len(records) - 1
+    assert decider.stats()["rate_limited"] == len(records) - 1

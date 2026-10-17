@@ -177,6 +177,7 @@ export interface AgentDetail {
   controller: string;
   alive: boolean;
   personality: Record<string, number>;
+  initial_personality?: Record<string, number>;
   trait_descriptions: Record<string, string>;
   tokens: number;
   food: number;
