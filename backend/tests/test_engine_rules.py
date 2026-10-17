@@ -179,10 +179,11 @@ def test_workplace_capacity_limits_workers():
     for a in s.world.agents.values():
         a.x, a.y = loc.x, loc.y
     s.begin_tick()
-    s.apply_decisions({aid: ActionProposal(action="work", duration=1) for aid in s.world.agents})
+    records = s.apply_decisions({aid: ActionProposal(action="work", duration=1) for aid in s.world.agents})
     result = s.advance()
     assert sum(1 for e in result.events if e.type == "work") == 1
-    assert sum(1 for e in result.events if e.type == "action_failed") == 2
+    # The full workplace is visible when deciding, so the others are turned away up front.
+    assert sum(1 for r in records if r.reason == "workplace_full") == 2
 
 
 def test_invalid_proposal_gets_fallback_and_is_recorded(sim):
@@ -283,3 +284,41 @@ def test_travel_always_arrives_despite_position_rounding():
     a.hunger = 60
     run_action(s, "a1", ActionProposal(action="eat"))
     assert a.hunger < 60
+
+
+def test_full_workplace_is_visible_at_decision_time():
+    s = make_sim({"simulation": {"population": 2}, "world": {"workplaces": 1, "workplace_capacity": 1}})
+    a1, a2 = s.world.agents["a1"], s.world.agents["a2"]
+    loc = place(s, a1, "workplace")
+    a2.x, a2.y = loc.x, loc.y
+    s.begin_tick()
+    records = s.apply_decisions({"a1": ActionProposal(action="work", duration=3),
+                                 "a2": ActionProposal(action="work", duration=3)})
+    by_id = {r.agent_id: r for r in records}
+    assert by_id["a1"].valid
+    assert not by_id["a2"].valid and by_id["a2"].reason == "workplace_full"
+    assert a2.current_task.action != "work"  # fell back to something else
+
+
+def test_work_redirects_to_a_free_workplace():
+    s = make_sim({"simulation": {"population": 2}, "world": {"workplaces": 2, "workplace_capacity": 1}})
+    a1, a2 = s.world.agents["a1"], s.world.agents["a2"]
+    loc = place(s, a1, "workplace")
+    a2.x, a2.y = loc.x, loc.y
+    s.begin_tick()
+    records = {r.agent_id: r for r in s.apply_decisions({"a1": ActionProposal(action="work"),
+                                                         "a2": ActionProposal(action="work")})}
+    assert records["a2"].valid and a2.current_task.target != a1.current_task.target
+
+
+def test_eat_goes_to_a_stocked_food_source():
+    """Regression: an agent with money starved because the nearest market was empty."""
+    s = make_sim({"world": {"food_sources": 2}})
+    a = s.world.agents["a1"]
+    near, far = [l for l in s.world.locations.values() if l.type == "food"]
+    a.x, a.y = near.x, near.y
+    near.stock = 0
+    a.hunger = 70
+    s.begin_tick()
+    rec = {r.agent_id: r for r in s.apply_decisions({"a1": ActionProposal(action="eat")})}["a1"]
+    assert rec.valid and a.current_task.target == far.id

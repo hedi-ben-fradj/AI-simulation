@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..config.levels import LEVEL_IDS
+
 TEMPLATES: list[dict[str, Any]] = [
     {
         "id": "scarcity_vs_abundance",
@@ -11,11 +13,21 @@ TEMPLATES: list[dict[str, Any]] = [
         "description": "Same population, different resource environments. Compare survival, work, social life and contemplation.",
         "base_preset": "default",
         "conditions": [
-            {"name": "abundance", "preset": "abundance", "overrides": {}},
-            {"name": "default", "preset": "default", "overrides": {}},
-            {"name": "scarcity", "preset": "scarcity", "overrides": {}},
+            {"name": "abundant", "overrides": {"resource_level": "abundant"}},
+            {"name": "normal", "overrides": {"resource_level": "normal"}},
+            {"name": "scarce", "overrides": {"resource_level": "scarce"}},
         ],
         "seeds": [1, 2, 3, 4, 5],
+        "ticks": 168,
+    },
+    {
+        "id": "resource_gradient",
+        "name": "Resource gradient (7 levels)",
+        "description": "Every resource level from very scarce to very abundant. How do survival, work, social "
+                       "life and contemplation change along the gradient?",
+        "base_preset": "default",
+        "conditions": [{"name": lv, "overrides": {"resource_level": lv}} for lv in LEVEL_IDS],
+        "seeds": [1, 2, 3],
         "ticks": 168,
     },
     {

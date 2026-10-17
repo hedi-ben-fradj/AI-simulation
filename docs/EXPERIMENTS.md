@@ -14,14 +14,13 @@ base_overrides:
   simulation: {population: 5}
   llm: {provider: none}          # none | mock | anthropic
 conditions:
-  - {name: abundance, preset: abundance}
-  - {name: default}
-  - name: scarcity
-    preset: scarcity
-    overrides: {resources: {food_price: 7}}
+  - {name: abundant, overrides: {resource_level: abundant}}
+  - {name: normal, overrides: {resource_level: normal}}
+  - name: scarce
+    overrides: {resource_level: scarce, resources: {food_price: 7}}   # explicit values beat the level
 seeds: [1, 2, 3, 4, 5]
 ticks: 168                       # one week at 24 ticks/day
-baseline: abundance              # default: the first condition
+baseline: abundant               # default: the first condition
 parallel_runs: 2
 maximum_total_spend: 20.0        # USD cap across LLM runs
 ```
@@ -34,7 +33,7 @@ python -m aisim.experiments my_experiment.yaml --out results/
 python -m aisim.experiments --template scarcity_vs_abundance --seeds 1 2 3 --ticks 240 --out results/
 ```
 
-Built-in templates (spec 22.4): `scarcity_vs_abundance`, `seed_variation`,
+Built-in templates (spec 22.4): `scarcity_vs_abundance`, `resource_gradient` (all 7 levels), `seed_variation`,
 `communication_cost`, `trust_priors`, `spirituality`, `attention_capacity`.
 
 ## What is recorded

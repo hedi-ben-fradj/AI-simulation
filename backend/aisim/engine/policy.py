@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .actions import REGISTRY, ActionProposal, distance, nearest_location
+from .actions import REGISTRY, ActionProposal, distance, nearest_location, workers_committed
 
 if TYPE_CHECKING:  # pragma: no cover
     from .simulation import DecisionRequest, Simulation
@@ -112,7 +112,9 @@ def decide(sim: "Simulation", request: "DecisionRequest", avoid: str | None = No
             return ActionProposal(action="reject_trade", target=offer.id, visible_intention=_intent("reject"))
 
     work_left = agent.work_capacity - agent.work_ticks_today
-    can_work = ok("work") and work_left > 0 and agent.energy > wc.energy_cost_per_tick + 5
+    job_free = any(l.capacity is None or workers_committed(sim, l, agent.id) < l.capacity
+                   for l in sim.world.locations.values() if l.type == "workplace")
+    can_work = ok("work") and work_left > 0 and agent.energy > wc.energy_cost_per_tick + 5 and job_free
 
     # 2. Survival: hunger.
     if agent.hunger >= 55 or (agent.hunger >= 35 and agent.food > 0):

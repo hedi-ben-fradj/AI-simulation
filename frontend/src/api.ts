@@ -48,6 +48,9 @@ export const api = {
   health: () => request<{ status: string; anthropic_key_configured: boolean; database: string }>('/api/health'),
   presets: () => request<Preset[]>('/api/presets'),
   preset: (id: string) => request<Record<string, any>>(`/api/presets/${id}`),
+  setupOptions: () => request<any>('/api/setup/options'),
+  setupPreview: (settings: unknown) => post<any>('/api/setup/preview', settings),
+  setupWorld: (settings: unknown) => post<WorldView>('/api/setup/worlds', settings),
   worlds: (includeExperiments = true) => request<WorldSummary[]>(`/api/worlds?include_experiments=${includeExperiments}`),
   createWorld: (body: { preset: string; name?: string; overrides?: Record<string, unknown>; start?: boolean }) =>
     post<WorldView>('/api/worlds', body),

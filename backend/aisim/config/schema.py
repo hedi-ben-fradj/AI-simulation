@@ -178,9 +178,11 @@ class TrustSection(_Section):
 
 class PersonalitySection(_Section):
     initial_default: float = 0.5
-    # How initial traits are drawn: all defaults, or normal around the default.
+    # How initial traits are drawn: "default" gives every agent the same values
+    # (initial_default or trait_means); "normal" draws with standard deviation
+    # initial_spread; "uniform" draws within +/- initial_spread of the mean.
     initial_distribution: Literal["default", "normal", "uniform"] = "normal"
-    initial_spread: float = 0.15
+    initial_spread: float = Field(0.15, ge=0, le=0.5)
     # Explicit per-trait mean overrides, e.g. {"spirituality": 0.8}.
     trait_means: dict[str, float] = Field(default_factory=dict)
     learning_rate: float = 0.02
@@ -243,6 +245,10 @@ class LLMSection(_Section):
 class SimulationConfig(_Section):
     name: str = "default"
     description: str = ""
+    # Optional resource-abundance level (see config/levels.py); derives prices,
+    # wages, jobs and food supply relative to the population.
+    resource_level: Literal["very_scarce", "scarce", "almost_scarce", "normal", "almost_abundant", "abundant",
+                            "very_abundant"] | None = None
     simulation: SimulationSection = Field(default_factory=SimulationSection)
     world: WorldSection = Field(default_factory=WorldSection)
     resources: ResourcesSection = Field(default_factory=ResourcesSection)

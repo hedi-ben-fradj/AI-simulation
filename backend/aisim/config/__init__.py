@@ -59,4 +59,12 @@ def load_config(
         if path.resolve() != (PRESET_DIR / "default.yaml").resolve():
             data = deep_merge(data, _read_yaml(path))
     data = deep_merge(data, overrides or {})
+    level = data.get("resource_level")
+    if level:
+        # A resource level derives economy values from the population; values
+        # set explicitly in ``overrides`` still win.
+        from .levels import resource_overrides
+
+        explicit = {k: v for k, v in (overrides or {}).items() if k != "resource_level"}
+        data = deep_merge(deep_merge(data, resource_overrides(level, data)), explicit)
     return SimulationConfig.model_validate(data)

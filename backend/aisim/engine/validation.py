@@ -96,7 +96,15 @@ def validate_action(sim: "Simulation", agent: Agent, proposal: ActionProposal) -
     # ---- target ----------------------------------------------------------
     travel_energy = 0.0
     if spec.location_type:
-        loc = resolve_location(sim, proposal.target) if proposal.target else nearest_location(sim, agent, spec.location_type)
+        if proposal.target:
+            loc = resolve_location(sim, proposal.target)
+        elif spec.location_type == "food":
+            # Unspecified food source: the nearest one that still has food.
+            stocked = [l for l in sim.world.locations.values() if l.type == "food" and (l.stock or 0) > 0]
+            loc = (min(stocked, key=lambda l: (distance(agent.x, agent.y, l.x, l.y), l.id)) if stocked
+                   else nearest_location(sim, agent, "food"))
+        else:
+            loc = nearest_location(sim, agent, spec.location_type)
         if proposal.target and loc is None:
             # The target may be an agent's name used loosely; fall back to nearest.
             loc = nearest_location(sim, agent, spec.location_type)

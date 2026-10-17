@@ -7,7 +7,7 @@ import { api } from './api';
 import { useWorldStream } from './hooks/useWorldStream';
 import { WorldCanvas, type ThoughtMode } from './components/WorldCanvas';
 import { WorldControls } from './components/WorldControls';
-import { CreateWorldModal } from './components/CreateWorldModal';
+import { SetupPage } from './components/SetupPage';
 import { AgentInspector } from './components/AgentInspector';
 import { EventFeed } from './components/EventFeed';
 import { Analytics } from './components/Analytics';
@@ -20,9 +20,17 @@ import { LOCATION_COLORS, MOOD_COLORS, hex } from './theme';
 
 const WORLD_KEY = 'aisim.world';
 
+type View = 'setup' | 'worlds' | 'experiments';
+
+function initialView(): View {
+  const hash = window.location.hash.replace(/^#/, '');
+  if (hash === 'experiments') return 'experiments';
+  return hash && hash !== 'setup' ? 'worlds' : 'setup';
+}
+
 function readStoredWorld(): string | null {
   const fromHash = window.location.hash.replace(/^#/, '');
-  if (fromHash && fromHash !== 'experiments') return fromHash;
+  if (fromHash && fromHash !== 'experiments' && fromHash !== 'setup') return fromHash;
   try {
     return localStorage.getItem(WORLD_KEY);
   } catch {
@@ -49,18 +57,18 @@ export default function App() {
   const [worlds, setWorlds] = useState<WorldSummary[]>([]);
   const [worldId, setWorldId] = useState<string | null>(readStoredWorld);
   const [selected, setSelected] = useState<string | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<string | null>('world');
-  const [view, setView] = useState<'worlds' | 'experiments'>(() => (window.location.hash === '#experiments' ? 'experiments' : 'worlds'));
+  // The app opens on the setup page unless the URL points at a world or the experiments page.
+  const [view, setView] = useState<View>(initialView);
   const [thoughts, setThoughts] = useState<ThoughtMode>('all');
-  const stream = useWorldStream(worldId);
+  const stream = useWorldStream(view === 'worlds' ? worldId : null);
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
 
   const loadWorlds = useCallback(() => {
     api.worlds().then((ws) => {
       setWorlds(ws);
-      setWorldId((cur) => (cur && ws.some((w) => w.id === cur) ? cur : ws[0]?.id ?? null));
+      setWorldId((cur) => (cur && ws.some((w) => w.id === cur) ? cur : ws.find((w) => !w.experiment_id)?.id ?? null));
     }).catch((e) => setError(String(e)));
   }, []);
 
@@ -77,7 +85,13 @@ export default function App() {
   }, [worldId, view]);
   useEffect(() => {
     if (view === 'experiments') window.history.replaceState(null, '', '#experiments');
+    if (view === 'setup') window.history.replaceState(null, '', '#setup');
   }, [view]);
+  const openWorld = (id: string) => {
+    setWorldId(id);
+    setView('worlds');
+    setTab('world');
+  };
 
   const world = stream.world;
   const agentNames = useMemo(() => Object.fromEntries((world?.agents ?? []).map((a) => [a.id, a.name])), [world?.agents]);
@@ -100,8 +114,8 @@ export default function App() {
         <Group h="100%" justify="space-between" wrap="wrap" gap="xs" py={6}>
           <Group gap="xs" wrap="nowrap">
             <Title order={4} style={{ whiteSpace: 'nowrap' }}>Agent Civilization</Title>
-            <SegmentedControl size="xs" value={view} onChange={(v) => setView(v as 'worlds' | 'experiments')}
-              data={[{ value: 'worlds', label: 'Worlds' }, { value: 'experiments', label: 'Experiments' }]} />
+            <SegmentedControl size="xs" value={view} onChange={(v) => setView(v as View)}
+              data={[{ value: 'setup', label: 'New simulation' }, { value: 'worlds', label: 'Worlds' }, { value: 'experiments', label: 'Experiments' }]} />
             {view === 'worlds' && (<>
             <Select
               size="xs"
@@ -113,7 +127,6 @@ export default function App() {
               w={220}
               aria-label="World"
             />
-            <Button size="xs" onClick={() => setCreateOpen(true)}>New world</Button>
             </>)}
           </Group>
           <Group gap="xs">
@@ -128,9 +141,10 @@ export default function App() {
       </AppShell.Header>
 
       <AppShell.Main>
-        {view === 'experiments' && (
-          <ExperimentsPage onOpenWorld={(id) => { setWorldId(id); setView('worlds'); setTab('world'); }} />
+        {view === 'setup' && (
+          <SetupPage worlds={worlds} onOpenWorld={openWorld} onCreated={(w) => { loadWorlds(); openWorld(w.id); }} />
         )}
+        {view === 'experiments' && <ExperimentsPage onOpenWorld={openWorld} />}
         {view === 'worlds' && (<>
         {error && (
           <Notification color="red" onClose={() => setError(null)} mb="sm" title="Error">{error}</Notification>
@@ -139,10 +153,10 @@ export default function App() {
           <Card withBorder maw={640} mx="auto" mt="xl" padding="lg">
             <Title order={3} mb="xs">No world yet</Title>
             <Text size="sm" mb="md">
-              Create a world to start a simulation. Agents follow deterministic world rules; their decisions come from a
+              Set up a simulation to start. Agents follow deterministic world rules; their decisions come from a
               rule-based policy or, optionally, from Claude via the backend.
             </Text>
-            <Button onClick={() => setCreateOpen(true)}>Create a world</Button>
+            <Button onClick={() => setView('setup')}>Set up a simulation</Button>
           </Card>
         )}
         {worldId && !world && <Text c="dimmed">Loading world…</Text>}
@@ -251,8 +265,6 @@ export default function App() {
         </>)}
       </AppShell.Main>
 
-      <CreateWorldModal opened={createOpen} onClose={() => setCreateOpen(false)}
-        onCreated={(w) => { setWorldId(w.id); loadWorlds(); }} />
     </AppShell>
   );
 }

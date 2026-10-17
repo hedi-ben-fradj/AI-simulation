@@ -38,12 +38,40 @@ presets). Units are abstract simulation units, not real-world quantities.
 | Food restock | at the end of each day each food source gains `restock_per_day` up to `max_stock` |
 | Upkeep | optional `daily_upkeep` tokens per day; unpaid upkeep damages health |
 
+## Resource levels
+
+The setup page's abundance slider (and `resource_level` in any config) sets the
+economy relative to the population, so a level means the same for 2 agents as
+for 20 (`backend/aisim/config/levels.py`). An agent needs about
+`hunger_increase_per_tick × ticks_per_day / food_nutrition` ≈ 3.2 meals per day.
+
+| Level | Food restocked per day (× need) | Meal price | Wage / hour | Starting tokens | Jobs (× agents) | Food sources |
+|---|---|---|---|---|---|---|
+| very scarce | 0.70 | 8 | 3 | 5 | 0.35 | 1 |
+| scarce | 0.85 | 6 | 4 | 8 | 0.50 | 1 |
+| almost scarce | 0.95 | 4.5 | 4.5 | 12 | 0.70 | 1 |
+| normal | 1.30 | 3 | 5 | 20 | 1.0 | 2 |
+| almost abundant | 1.60 | 2.5 | 6 | 28 | 1.0 | 2 |
+| abundant | 2.20 | 1.5 | 8 | 40 | 1.0 | 3 |
+| very abundant | 3.00 | 1 | 10 | 60 | 1.0 | 3 |
+
+Below 1× not everyone can eat even with money; values set explicitly in a
+config still override the level.
+
+## Initial personality
+
+* **Identical**: every agent starts with the same traits (50%, or the chosen
+  per-trait averages). Differences can only come from experience.
+* **Randomised**: each trait is drawn around its average with the chosen
+  deviation — `normal` (deviation = standard deviation, clipped to 0–100%) or
+  `uniform` (anywhere within ± deviation).
+
 ## Actions
 
 | Action | Preconditions | Per-tick effect |
 |---|---|---|
-| `work` | at a workplace with free capacity; daily work capacity left; energy | `tokens += base_wage * productivity * time * wage_multiplier`; `energy -= energy_cost_per_tick * time * workload_multiplier`; `health -= max(0, workload - safe_workload) * health_penalty_rate` |
-| `eat` | food in inventory, or at a food source with stock and `tokens >= price` | `hunger = max(0, hunger - food_nutrition)` |
+| `work` | at a workplace with a free slot (slots taken by committed workers are visible; an unspecified workplace falls back to one with a free slot); daily work capacity left; energy | `tokens += base_wage * productivity * time * wage_multiplier`; `energy -= energy_cost_per_tick * time * workload_multiplier`; `health -= max(0, workload - safe_workload) * health_penalty_rate` |
+| `eat` | food in inventory, or at a food source with stock and `tokens >= price` (an unspecified source means the nearest one with stock) | `hunger = max(0, hunger - food_nutrition)` |
 | `buy_food` | at a food source; inventory space, stock and tokens | moves food into inventory |
 | `rest` | — | `energy += rest_energy_recovery_per_tick` (× `rest_area_recovery_multiplier` at a rest area); `health += rest_health_recovery_per_tick` if not hungry |
 | `explore` | energy | wander; novelty ↑; chance of discovery (tokens or food); small hazard risk |

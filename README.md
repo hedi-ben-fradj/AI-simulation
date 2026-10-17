@@ -17,7 +17,8 @@ actually happens.
 
 ```bash
 ANTHROPIC_API_KEY=sk-ant-...  docker compose up --build    # the key is optional
-# open http://localhost:8080 → New world → pick a preset → Run
+# open http://localhost:8080 → the setup page: choose the number of agents (2+),
+# resource abundance (very scarce … very abundant), personality mode, rules → Start
 ```
 
 Without Docker see [`docs/OPERATIONS.md`](docs/OPERATIONS.md). Engine only:
@@ -34,6 +35,12 @@ print(result.metrics)
 
 ## What you can do
 
+* **Set up a world** — number of agents (from 2), a 7-step resource slider from
+  very scarce to very abundant (scaled to the population), identical or randomised
+  personalities with a chosen deviation from 50%, per-trait averages, message
+  costs, trust towards strangers, theft, hazards, death/replacement, existential
+  goal, and rule-based / mock / Claude minds, with a live preview of the economy
+  and the agents' starting personalities.
 * **Watch a world** — live PixiJS map with movement, mood colours, speech and
   intention bubbles; run, pause, step, change speed.
 * **Inspect agents** — state, needs, temporary emotions, goals, time allocation,

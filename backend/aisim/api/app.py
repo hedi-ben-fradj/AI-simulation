@@ -15,6 +15,8 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, 
 from fastapi.middleware.cors import CORSMiddleware
 
 from ..config import list_presets, load_config
+from ..config.levels import describe_economy
+from ..config.setup import SetupSettings, settings_to_overrides, setup_options
 from ..engine.actions import REGISTRY
 from ..engine.state import TRAIT_DESCRIPTIONS
 from ..persistence import Database, Repository
@@ -37,6 +39,36 @@ class Settings:
         self.cors_origins = origins
         self.api_token = api_token if api_token is not None else os.environ.get("AISIM_API_TOKEN") or None
         self.migrate = migrate
+
+
+def preview_setup(config, body: SetupSettings) -> dict[str, Any]:
+    """What a world created with these settings will look like at tick 0."""
+    from ..engine.state import TRAITS
+    from ..engine.worldgen import generate_world
+
+    world, _ = generate_world(config, "preview")
+    agents = [{"name": a.name, "controller": a.controller, "personality": a.personality}
+              for a in world.agents.values()]
+    traits = {}
+    for t in TRAITS:
+        vals = [a["personality"][t] for a in agents]
+        traits[t] = {"mean": round(sum(vals) / len(vals), 3), "min": min(vals), "max": max(vals)}
+    economy = describe_economy(config)
+    warnings = []
+    if economy["food_supply_vs_need"] is not None and economy["food_supply_vs_need"] < 1:
+        warnings.append("There is not enough food for everyone: expect hunger, competition and possibly deaths.")
+    if economy["work_hours_for_food_per_day"] > 8:
+        warnings.append("Agents must work most of the day just to afford food.")
+    if body.provider == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
+        warnings.append("No ANTHROPIC_API_KEY on the server: Claude agents will fall back to rule-based decisions.")
+    n_llm = 0 if body.provider == "none" else (body.population if body.llm_agents is None
+                                               else min(body.llm_agents, body.population))
+    if body.provider == "anthropic" and n_llm and config.llm.maximum_world_spend is None:
+        warnings.append("No spend cap: Claude usage is unlimited for this world.")
+    return {"economy": economy, "traits": traits, "agents": agents, "llm_agents": n_llm,
+            "model": config.llm.model if body.provider == "anthropic" else None,
+            "max_world_spend": config.llm.maximum_world_spend, "world_size": config.world.width,
+            "warnings": warnings}
 
 
 def create_app(settings: Settings | None = None, decider_factory=None) -> FastAPI:
@@ -107,6 +139,29 @@ def create_app(settings: Settings | None = None, decider_factory=None) -> FastAP
                          "location_type": s.location_type, "target_kind": s.target_kind} for s in REGISTRY.values()],
             "traits": TRAIT_DESCRIPTIONS,
         }
+
+    # --------------------------------------------------------------- setup
+    @app.get("/api/setup/options")
+    async def setup_options_route() -> dict[str, Any]:
+        opts = setup_options()
+        opts["anthropic_key_configured"] = bool(os.environ.get("ANTHROPIC_API_KEY"))
+        return opts
+
+    @app.post("/api/setup/preview")
+    async def setup_preview(body: SetupSettings) -> dict[str, Any]:
+        try:
+            config = load_config("default", settings_to_overrides(body))
+        except ValueError as exc:
+            raise HTTPException(422, str(exc))
+        return preview_setup(config, body)
+
+    @app.post("/api/setup/worlds", status_code=201, dependencies=[Depends(require_token)])
+    async def setup_world(body: SetupSettings, mgr: WorldManager = Depends(manager)):
+        try:
+            runner = await mgr.create_world("default", settings_to_overrides(body), body.name, start=body.start)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc))
+        return runner.view()
 
     # -------------------------------------------------------------- worlds
     @app.get("/api/worlds")

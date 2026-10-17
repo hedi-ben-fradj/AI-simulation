@@ -106,7 +106,7 @@ def generate_personality(config: SimulationConfig, rng) -> dict[str, float]:
         if pc.initial_distribution == "default":
             value = mean
         elif pc.initial_distribution == "uniform":
-            value = rng.uniform(mean - pc.initial_spread * 1.7, mean + pc.initial_spread * 1.7)
+            value = rng.uniform(mean - pc.initial_spread, mean + pc.initial_spread)
         else:
             value = rng.gauss(mean, pc.initial_spread)
         traits[trait] = round(_clamp(value), 3)

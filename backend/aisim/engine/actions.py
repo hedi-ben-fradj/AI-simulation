@@ -162,9 +162,28 @@ def _work_capacity_left(sim, agent) -> int:
     return agent.work_capacity - agent.work_ticks_today
 
 
+def workers_committed(sim: "Simulation", loc: Location, exclude: str | None = None) -> int:
+    """Agents already committed to working at ``loc`` (visible to anyone looking)."""
+    return sum(
+        1 for a in sim.world.agents.values()
+        if a.alive and a.id != exclude and a.current_task is not None
+        and a.current_task.action == "work" and a.current_task.target == loc.id
+    )
+
+
 def _check_work(sim, agent, proposal, task):
     if _work_capacity_left(sim, agent) <= 0:
         return "work_capacity_exhausted"
+    loc = sim.world.locations.get(task.target or "")
+    if loc is not None and loc.capacity is not None and workers_committed(sim, loc, agent.id) >= loc.capacity:
+        # Prefer another workplace with a free slot before giving up.
+        free = [l for l in sim.world.locations.values() if l.type == "workplace" and l.id != loc.id
+                and (l.capacity is None or workers_committed(sim, l, agent.id) < l.capacity)]
+        if proposal.target or not free:
+            return "workplace_full"
+        alt = min(free, key=lambda l: (distance(agent.x, agent.y, l.x, l.y), l.id))
+        task.target = alt.id
+        task.travel_to = None if at_location(agent, alt) else alt.id
     task.total_ticks = task.remaining_ticks = min(task.total_ticks, _work_capacity_left(sim, agent))
     return None
 

@@ -25,7 +25,7 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from ..engine.actions import REGISTRY, distance, nearest_location, travel_ticks
+from ..engine.actions import REGISTRY, distance, nearest_location, travel_ticks, workers_committed
 from ..engine.communication import estimate_tokens
 from ..engine.state import TRAIT_DESCRIPTIONS
 from .memory import retrieve
@@ -91,6 +91,9 @@ def _place_line(sim: "Simulation", agent: "Agent", loc) -> str:
         extra = f"; meal price {loc.price:g} tokens; {stock}"
     elif loc.type == "workplace":
         extra = f"; pays ~{sim.config.work.base_wage_per_tick * loc.wage_multiplier:g} tokens/tick"
+        if loc.capacity is not None:
+            taken = workers_committed(sim, loc, agent.id)
+            extra += f"; jobs taken {taken}/{loc.capacity}" + (" (full)" if taken >= loc.capacity else "")
     return f"- {loc.id} {loc.name} ({kind}): {where}{extra}"
 
 
