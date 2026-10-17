@@ -32,6 +32,8 @@ export interface AgentBrief {
   food: number;
   existential_active: boolean;
   said: string | null;
+  /** Character sprite sheet (see backend/aisim/runtime/appearance.py). */
+  sprite?: string;
 }
 
 export interface LLMStats {
@@ -178,6 +180,7 @@ export interface AgentDetail {
   alive: boolean;
   personality: Record<string, number>;
   initial_personality?: Record<string, number>;
+  sprite?: string;
   trait_descriptions: Record<string, string>;
   tokens: number;
   food: number;

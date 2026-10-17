@@ -24,6 +24,7 @@ from ..engine.state import TRAIT_DESCRIPTIONS
 from ..persistence import Database, Repository
 from ..runtime.hub import Hub
 from ..runtime.manager import WorldManager
+from ..runtime.appearance import agent_sprite
 from ..runtime.views import agent_detail
 from .schemas import CreateWorldRequest, SpeedRequest, StepRequest
 
@@ -51,8 +52,8 @@ def preview_setup(config, body: SetupSettings) -> dict[str, Any]:
     from ..engine.worldgen import generate_world
 
     world, _ = generate_world(config, "preview")
-    agents = [{"name": a.name, "controller": a.controller, "personality": a.personality}
-              for a in world.agents.values()]
+    agents = [{"name": a.name, "controller": a.controller, "personality": a.personality,
+               "sprite": agent_sprite(a.id, a.personality)} for a in world.agents.values()]
     traits = {}
     for t in TRAITS:
         vals = [a["personality"][t] for a in agents]

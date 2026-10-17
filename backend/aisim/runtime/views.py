@@ -11,6 +11,7 @@ from typing import Any
 
 from ..engine.simulation import Simulation, TickResult
 from ..engine.state import TRAIT_DESCRIPTIONS, Agent
+from .appearance import agent_sprite
 
 
 def agent_brief(sim: Simulation, a: Agent, said: dict[str, str] | None = None) -> dict[str, Any]:
@@ -22,6 +23,7 @@ def agent_brief(sim: Simulation, a: Agent, said: dict[str, str] | None = None) -
         "health": round(a.health, 1), "energy": round(a.energy, 1), "hunger": round(a.hunger, 1),
         "tokens": round(a.tokens, 2), "food": a.food, "existential_active": a.existential.active,
         "said": (said or {}).get(a.id),
+        "sprite": agent_sprite(a.id, a.initial_personality or a.personality),
     }
 
 
@@ -59,6 +61,7 @@ def agent_detail(sim: Simulation, agent_id: str) -> dict[str, Any] | None:
     if a is None:
         return None
     data = a.model_dump(mode="json")
+    data["sprite"] = agent_sprite(a.id, a.initial_personality or a.personality)
     data["relationships"] = sorted((
         {**r.model_dump(), "trust": round(r.trust, 4),
          "other_alive": sim.world.agents[r.other_id].alive if r.other_id in sim.world.agents else False}

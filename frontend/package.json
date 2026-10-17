@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fontsource/pixelify-sans": "5.1.0",
     "@mantine/core": "7.15.2",
     "@mantine/hooks": "7.15.2",
     "pixi.js": "8.6.6",

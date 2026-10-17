@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActionIcon, Alert, AppShell, Badge, Box, Button, Card, Grid, Group, Notification, SegmentedControl, Select, Stack, Table, Tabs, Text,
+  ActionIcon, Alert, AppShell, Badge, Box, Button, Card, Grid, Group, Notification, Progress, SegmentedControl, Select, Stack, Tabs, Text,
+  UnstyledButton,
   Title, Tooltip, useMantineColorScheme,
 } from '@mantine/core';
 import { api } from './api';
@@ -15,8 +16,10 @@ import { LLMPanel } from './components/LLMPanel';
 import { SocietyPanel } from './components/SocietyPanel';
 import { MindPanel } from './components/MindPanel';
 import { ExperimentsPage } from './components/ExperimentsPage';
-import type { WorldSummary } from './types';
-import { LOCATION_COLORS, MOOD_COLORS, hex } from './theme';
+import type { WorldSummary, WorldView } from './types';
+import { MOOD_COLORS, hex } from './theme';
+import { ACTION_EMOTES, ARCHETYPE_LABELS } from './sprites';
+import { Avatar } from './components/Avatar';
 
 const WORLD_KEY = 'aisim.world';
 
@@ -39,17 +42,60 @@ function readStoredWorld(): string | null {
 }
 
 function Legend() {
+  const examples: [string, string][] = [
+    ['human-worker-red', 'human-worker'], ['mage-cyan', 'mage'], ['archer-green', 'archer'], ['warrior-red', 'warrior'],
+    ['soldier-blue', 'soldier'], ['human-soldier-cyan', 'human-soldier'], ['orc-peon-red', 'orc'],
+  ];
   return (
-    <Group gap="md" wrap="wrap">
-      {Object.entries(LOCATION_COLORS).filter(([k]) => k !== 'wild').map(([k, c]) => (
-        <Group key={k} gap={4}><Box w={10} h={10} style={{ borderRadius: 5, background: hex(c) }} /><Text size="xs">{k}</Text></Group>
+    <Stack gap={6}>
+      <Group gap="md" wrap="wrap">
+        <Text size="xs" fw={600}>Who's who</Text>
+        {examples.map(([sheet, kind]) => (
+          <Tooltip key={kind} label={ARCHETYPE_LABELS[kind]}>
+            <Group gap={4} wrap="nowrap"><Avatar sprite={sheet} size={22} /><Text size="xs">{ARCHETYPE_LABELS[kind].split(' — ')[0]}</Text></Group>
+          </Tooltip>
+        ))}
+        <Text size="xs" c="dimmed">appearance = strongest starting trait (hover)</Text>
+      </Group>
+      <Group gap="md" wrap="wrap">
+        <Text size="xs" fw={600}>Mood dot</Text>
+        {['content', 'calm', 'contemplative', 'lonely', 'stressed', 'starving', 'exhausted'].map((m) => (
+          <Group key={m} gap={4}><Box w={9} h={9} style={{ borderRadius: 5, background: hex(MOOD_COLORS[m]) }} /><Text size="xs">{m}</Text></Group>
+        ))}
+        <Text size="xs" c="dimmed">◆ = Claude/LLM agent · violet glow = pondering existence · drag to pan, scroll to zoom</Text>
+      </Group>
+    </Stack>
+  );
+}
+
+function AgentRoster({ agents, onSelect }: { agents: WorldView['agents']; onSelect: (id: string) => void }) {
+  return (
+    <Stack gap={4}>
+      {agents.map((a) => (
+        <UnstyledButton key={a.id} onClick={() => onSelect(a.id)} p={6}
+          style={{ borderRadius: 6, opacity: a.alive ? 1 : 0.55, border: '1px solid var(--mantine-color-default-border)' }}>
+          <Group gap="sm" wrap="nowrap">
+            <Avatar sprite={a.sprite} size={34} dead={!a.alive} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Group gap={6} wrap="nowrap">
+                <Box w={8} h={8} style={{ borderRadius: 4, flexShrink: 0, background: hex(MOOD_COLORS[a.alive ? a.mood : 'dead'] ?? 0xadb5bd) }} />
+                <Text size="sm" fw={600} truncate>{a.name}</Text>
+                {a.controller === 'llm' && <Badge size="xs" color="violet" variant="light">LLM</Badge>}
+                <Text size="xs" c="dimmed" ml="auto" style={{ whiteSpace: 'nowrap' }}>
+                  {a.alive ? `${ACTION_EMOTES[a.action] ?? ''} ${a.traveling ? `→ ${a.action}` : a.action}` : '🪦 dead'}
+                </Text>
+              </Group>
+              {a.alive && (
+                <Group gap={6} mt={4} wrap="nowrap">
+                  <Progress value={a.health} size="sm" color={a.health > 50 ? 'teal' : a.health > 25 ? 'yellow' : 'red'} style={{ flex: 1 }} aria-label="health" />
+                  <Text size="xs" c="dimmed" w={70} ta="right">{a.tokens.toFixed(1)} tokens</Text>
+                </Group>
+              )}
+            </div>
+          </Group>
+        </UnstyledButton>
       ))}
-      <Text size="xs" c="dimmed">|</Text>
-      {['content', 'calm', 'contemplative', 'lonely', 'stressed', 'starving', 'exhausted'].map((m) => (
-        <Group key={m} gap={4}><Box w={10} h={10} style={{ borderRadius: 5, background: hex(MOOD_COLORS[m]) }} /><Text size="xs">{m}</Text></Group>
-      ))}
-      <Text size="xs" c="dimmed">white ring = LLM agent · violet halo = existential question salient</Text>
-    </Group>
+    </Stack>
   );
 }
 
@@ -113,7 +159,10 @@ export default function App() {
       <AppShell.Header px="sm">
         <Group h="100%" justify="space-between" wrap="wrap" gap="xs" py={6}>
           <Group gap="xs" wrap="nowrap">
-            <Title order={4} style={{ whiteSpace: 'nowrap' }}>Agent Civilization</Title>
+            <Group gap={6} wrap="nowrap">
+              <Avatar sprite="mage-red" size={30} />
+              <Title order={3} style={{ whiteSpace: 'nowrap' }}>Agent Civilization</Title>
+            </Group>
             <SegmentedControl size="xs" value={view} onChange={(v) => setView(v as View)}
               data={[{ value: 'setup', label: 'New simulation' }, { value: 'worlds', label: 'Worlds' }, { value: 'experiments', label: 'Experiments' }]} />
             {view === 'worlds' && (<>
@@ -205,27 +254,8 @@ export default function App() {
                       </>
                     ) : (
                       <>
-                        <Text fw={600} mb="xs">Agents — click one to inspect</Text>
-                        <Table fz="xs" highlightOnHover verticalSpacing={4}>
-                          <Table.Thead>
-                            <Table.Tr><Table.Th>Name</Table.Th><Table.Th>Doing</Table.Th><Table.Th>HP</Table.Th><Table.Th>Tokens</Table.Th></Table.Tr>
-                          </Table.Thead>
-                          <Table.Tbody>
-                            {world.agents.map((a) => (
-                              <Table.Tr key={a.id} onClick={() => setSelected(a.id)} style={{ cursor: 'pointer', opacity: a.alive ? 1 : 0.5 }}>
-                                <Table.Td>
-                                  <Group gap={4} wrap="nowrap">
-                                    <Box w={8} h={8} style={{ borderRadius: 4, background: hex(MOOD_COLORS[a.alive ? a.mood : 'dead'] ?? 0xadb5bd) }} />
-                                    {a.name}{a.controller === 'llm' && <Badge size="xs" color="violet" variant="light">LLM</Badge>}
-                                  </Group>
-                                </Table.Td>
-                                <Table.Td>{a.alive ? a.action : 'dead'}</Table.Td>
-                                <Table.Td>{a.health.toFixed(0)}</Table.Td>
-                                <Table.Td>{a.tokens.toFixed(1)}</Table.Td>
-                              </Table.Tr>
-                            ))}
-                          </Table.Tbody>
-                        </Table>
+                        <Title order={5} mb="xs">Villagers — click one to inspect</Title>
+                        <AgentRoster agents={world.agents} onSelect={setSelected} />
                         {stream.metrics.length > 0 && (() => {
                           const m = stream.metrics[stream.metrics.length - 1];
                           return (
