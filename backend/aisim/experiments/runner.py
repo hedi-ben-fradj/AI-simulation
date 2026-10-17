@@ -40,6 +40,9 @@ def build_run_config(spec: ExperimentSpec, condition: Condition, seed: int) -> t
     preset = condition.preset or spec.base_preset
     overrides = deep_merge(spec.base_overrides, condition.overrides)
     overrides = deep_merge(overrides, {"simulation": {"random_seed": seed, "max_ticks": spec.ticks}})
+    # Finished runs are only inspected, not resumed: daily snapshots (plus the final one) suffice.
+    overrides["simulation"].setdefault("snapshot_interval_ticks",
+                                       overrides.get("simulation", {}).get("ticks_per_day", 24))
     config = load_config(preset, overrides)
     config = config.model_copy(update={"name": f"{spec.name} · {condition.name} · seed {seed}"})
     return preset, config

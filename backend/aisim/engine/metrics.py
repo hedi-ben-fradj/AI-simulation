@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from statistics import mean
+import math
 
 from .state import TRAITS
 from typing import TYPE_CHECKING, Any
@@ -23,7 +23,8 @@ def gini(values: list[float]) -> float:
 
 
 def _m(values: list[float]) -> float:
-    return round(mean(values), 4) if values else 0.0
+    # math.fsum is ~50x faster than statistics.mean (which uses exact fractions).
+    return round(math.fsum(values) / len(values), 4) if values else 0.0
 
 
 FRIEND_TRUST = 0.6

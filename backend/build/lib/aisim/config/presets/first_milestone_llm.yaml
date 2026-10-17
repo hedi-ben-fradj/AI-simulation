@@ -1,0 +1,9 @@
+name: First milestone (LLM)
+description: Five agents, one controlled by Claude, the rest rule-based. Requires ANTHROPIC_API_KEY.
+simulation:
+  population: 5
+  decision_timeout_seconds: 20
+llm:
+  provider: anthropic
+  llm_agents: 1
+  maximum_world_spend: 1.0

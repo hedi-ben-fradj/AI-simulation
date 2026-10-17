@@ -21,6 +21,7 @@ from .views import tick_payload, world_view
 log = logging.getLogger(__name__)
 
 MAX_SAVE_ATTEMPTS = 3
+SLOW_TICK_SECONDS = 10.0
 
 
 class WorldRunner:
@@ -80,6 +81,11 @@ class WorldRunner:
             self._unsaved.append((result, usage))
             await self._flush(stats.get("spend_usd"))
             self.last_tick_seconds = time.monotonic() - t0
+            log.debug("world %s tick %d: %.3fs, %d decision(s), %d event(s)", self.world_id, result.tick,
+                      self.last_tick_seconds, len(result.decisions), len(result.events))
+            if self.last_tick_seconds > SLOW_TICK_SECONDS:
+                log.warning("world %s tick %d was slow: %.1fs (llm queue %s)", self.world_id, result.tick,
+                            self.last_tick_seconds, stats.get("queue_depth"))
             await self.hub.publish(self.world_id, tick_payload(sim, result, self.status, self.speed, self.extra()))
             return result
 

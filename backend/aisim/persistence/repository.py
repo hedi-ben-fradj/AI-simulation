@@ -10,7 +10,7 @@ import threading
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, insert, select
 
 from ..engine.simulation import Simulation, TickResult
 from .db import Database
@@ -75,25 +75,25 @@ class Repository:
         interval = sim.config.simulation.snapshot_interval_ticks
         take_snapshot = force_snapshot or sim.world.tick % interval == 0
         with self._locked(), self.db.session() as s:
-            s.add_all([EventRow(world_id=wid, **e.model_dump()) for e in result.events])
-            s.add_all([MessageRow(
-                world_id=wid, message_id=m.id, sender_id=m.sender_id, recipient_id=m.recipient_id,
-                content=m.content, tokens=m.tokens, sent_tick=m.sent_tick, deliver_tick=m.deliver_tick,
-                token_cost=m.token_cost, existential=m.existential) for m in result.messages])
-            s.add_all([DecisionRow(
-                world_id=wid, tick=d.tick, agent_id=d.agent_id, source=d.source, valid=d.valid, reason=d.reason,
-                applied_action=d.applied_action, visible_intention=d.visible_intention,
-                existential_active=d.existential_active, fallback_reason=d.fallback_reason,
-                latency_ms=d.latency_ms, proposal=d.proposal, notes=d.notes) for d in result.decisions])
-            s.add_all([MemoryRow(
-                world_id=wid, agent_id=aid, memory_id=m.id, tick=m.tick, kind=m.kind, content=m.content,
-                importance=m.importance, related_agents=m.related_agents, tags=m.tags, source=m.source)
-                for aid, m in result.memories])
-            s.add_all([TrustChangeRow(world_id=wid, **t) for t in result.trust_changes])
-            s.add_all([TraitHistoryRow(world_id=wid, **{k: v for k, v in t.items()}) for t in result.trait_changes])
-            s.merge(MetricRow(world_id=wid, tick=result.tick, data=result.metrics))
-            for u in llm_usage or []:
-                s.add(LLMUsageRow(world_id=wid, **u))
+            # Bulk Core inserts (executemany) are far cheaper than ORM unit-of-work for per-tick rows.
+            _bulk(s, EventRow, [{"world_id": wid, **e.model_dump()} for e in result.events])
+            _bulk(s, MessageRow, [{
+                "world_id": wid, "message_id": m.id, "sender_id": m.sender_id, "recipient_id": m.recipient_id,
+                "content": m.content, "tokens": m.tokens, "sent_tick": m.sent_tick, "deliver_tick": m.deliver_tick,
+                "token_cost": m.token_cost, "existential": m.existential} for m in result.messages])
+            _bulk(s, DecisionRow, [{
+                "world_id": wid, "tick": d.tick, "agent_id": d.agent_id, "source": d.source, "valid": d.valid,
+                "reason": d.reason, "applied_action": d.applied_action, "visible_intention": d.visible_intention,
+                "existential_active": d.existential_active, "fallback_reason": d.fallback_reason,
+                "latency_ms": d.latency_ms, "proposal": d.proposal, "notes": d.notes} for d in result.decisions])
+            _bulk(s, MemoryRow, [{
+                "world_id": wid, "agent_id": aid, "memory_id": m.id, "tick": m.tick, "kind": m.kind,
+                "content": m.content, "importance": m.importance, "related_agents": m.related_agents,
+                "tags": m.tags, "source": m.source} for aid, m in result.memories])
+            _bulk(s, TrustChangeRow, [{"world_id": wid, **t} for t in result.trust_changes])
+            _bulk(s, TraitHistoryRow, [{"world_id": wid, **t} for t in result.trait_changes])
+            _bulk(s, MetricRow, [{"world_id": wid, "tick": result.tick, "data": result.metrics}])
+            _bulk(s, LLMUsageRow, [{"world_id": wid, **u} for u in llm_usage or []])
             world = s.get(WorldRow, wid)
             if world is None:
                 raise KeyError(wid)
@@ -105,6 +105,9 @@ class Repository:
             if take_snapshot:
                 world.snapshot = sim.snapshot()
                 world.snapshot_tick = sim.world.tick
+            # The agents/relationships tables are a queryable mirror (live views read memory);
+            # refreshing them is O(n^2) in relationships, so do it at most once per simulated day.
+            if force_snapshot or sim.world.tick % sim.config.simulation.ticks_per_day == 0:
                 self._write_agents(s, sim)
             world.updated_at = datetime.now(timezone.utc)
 
@@ -112,15 +115,16 @@ class Repository:
         wid = sim.world.id
         s.execute(delete(AgentRow).where(AgentRow.world_id == wid))
         s.execute(delete(RelationshipRow).where(RelationshipRow.world_id == wid))
-        s.add_all([AgentRow(
-            world_id=wid, agent_id=a.id, name=a.name, controller=a.controller, alive=a.alive,
-            born_tick=a.born_tick, death_tick=(a.death or {}).get("tick"), death_cause=(a.death or {}).get("cause"),
-            personality=a.personality, state=agent_state_summary(a), updated_tick=sim.world.tick)
-            for a in sim.world.agents.values()])
-        s.add_all([RelationshipRow(
-            world_id=wid, agent_id=a.id, other_id=r.other_id, trust_alpha=r.trust_alpha, trust_beta=r.trust_beta,
-            trust=r.trust, familiarity=r.familiarity, affinity=r.affinity, interactions=r.interactions,
-            updated_tick=sim.world.tick) for a in sim.world.agents.values() for r in a.relationships.values()])
+        _bulk(s, AgentRow, [{
+            "world_id": wid, "agent_id": a.id, "name": a.name, "controller": a.controller, "alive": a.alive,
+            "born_tick": a.born_tick, "death_tick": (a.death or {}).get("tick"),
+            "death_cause": (a.death or {}).get("cause"), "personality": a.personality,
+            "state": agent_state_summary(a), "updated_tick": sim.world.tick} for a in sim.world.agents.values()])
+        _bulk(s, RelationshipRow, [{
+            "world_id": wid, "agent_id": a.id, "other_id": r.other_id, "trust_alpha": r.trust_alpha,
+            "trust_beta": r.trust_beta, "trust": r.trust, "familiarity": r.familiarity, "affinity": r.affinity,
+            "interactions": r.interactions, "updated_tick": sim.world.tick}
+            for a in sim.world.agents.values() for r in a.relationships.values()])
 
     def set_status(self, world_id: str, status: str) -> None:
         with self._locked(), self.db.session() as s:
@@ -323,6 +327,11 @@ class Repository:
             self.delete_world(w["id"])
         with self._locked(), self.db.session() as s:
             s.execute(delete(ExperimentRow).where(ExperimentRow.id == exp_id))
+
+
+def _bulk(session, table, rows: list[dict[str, Any]]) -> None:
+    if rows:
+        session.execute(insert(table), rows)
 
 
 def _event_dict(r: EventRow) -> dict[str, Any]:

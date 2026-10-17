@@ -221,3 +221,23 @@ def test_mock_llm_world_records_usage_and_restores_spend(db_url):
     with make_client(db_url) as c:
         live = c.get(f"/api/worlds/{wid}/llm").json()["live"]
         assert live["spend_usd"] == pytest.approx(spend)
+
+
+def test_pause_with_pending_llm_decisions_is_consistent(db_url):
+    overrides = {"simulation": {"population": 3, "decision_timeout_seconds": 5},
+                 "llm": {"provider": "mock", "mock_latency_seconds": 0.4}}
+    with make_client(db_url) as c:
+        wid = create_world(c, overrides=overrides)["id"]
+        c.post(f"/api/worlds/{wid}/speed", json={"speed": 0})
+        c.post(f"/api/worlds/{wid}/start")
+        time.sleep(0.15)  # a tick is waiting on model responses
+        w = c.post(f"/api/worlds/{wid}/pause").json()
+        assert w["status"] == "paused"
+        tick = w["tick"]
+        assert tick >= 1  # the in-flight tick completed instead of being torn
+        assert c.get(f"/api/worlds/{wid}/metrics").json()[-1]["tick"] == tick - 1
+        decisions = c.get(f"/api/worlds/{wid}/decisions", params={"limit": 1000}).json()
+        assert all(d["tick"] < tick for d in decisions)
+    with make_client(db_url) as c:
+        assert c.get(f"/api/worlds/{wid}").json()["tick"] == tick
+        assert c.post(f"/api/worlds/{wid}/step").json()["tick"] == tick + 1

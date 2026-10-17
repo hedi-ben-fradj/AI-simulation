@@ -19,10 +19,10 @@ class _Section(BaseModel):
 
 class SimulationSection(_Section):
     ticks_per_day: int = Field(24, ge=1)
-    max_agents: int = Field(20, ge=1)
-    population: int = Field(5, ge=1)
+    max_agents: int = Field(20, ge=1, le=1000)
+    population: int = Field(5, ge=1, le=1000)
     random_seed: int = 42
-    decision_timeout_seconds: float = Field(20.0, gt=0)
+    decision_timeout_seconds: float = Field(20.0, gt=0, le=600)
     fallback_on_timeout: bool = True
     # Stop automatically after this many ticks (None = run until paused).
     max_ticks: int | None = None
@@ -119,11 +119,11 @@ class WorkSection(_Section):
 
 class CapacitySection(_Section):
     actions_per_tick: int = 1
-    max_message_tokens: int = 100
+    max_message_tokens: int = Field(100, ge=1, le=2000)
     max_outgoing_messages_per_tick: int = 3
     max_incoming_messages_processed_per_tick: int = 5
     attention_budget_per_tick: float = 10
-    context_token_budget: int = 6000
+    context_token_budget: int = Field(6000, ge=500, le=100000)
     max_task_duration_ticks: int = 4
     max_rest_duration_ticks: int = 8
     max_active_goals: int = 3
@@ -213,14 +213,14 @@ class LLMSection(_Section):
     # How many agents are LLM-controlled; the rest use the rule-based policy.
     # None means all agents.
     llm_agents: int | None = None
-    max_output_tokens: int = 800
+    max_output_tokens: int = Field(800, ge=64, le=16000)
     # Reasoning effort (low | medium | high | xhigh | max); None uses the model default.
     effort: str | None = "low"
     # Retry policy-declined requests on Anthropic's recommended fallback model.
     server_side_fallback: bool = True
     # Cache the shared, static part of the prompt across agents and ticks.
     prompt_caching: bool = True
-    max_concurrent_requests: int = 5
+    max_concurrent_requests: int = Field(5, ge=1, le=100)
     max_retries: int = 1
     request_timeout_seconds: float = 30
     requests_per_minute: int = 50

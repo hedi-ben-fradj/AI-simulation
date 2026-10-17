@@ -1,0 +1,90 @@
+# Default world. Keys under each section follow the specification (section 23);
+# extra keys are documented in aisim/config/schema.py. Every value is an
+# illustrative starting point to be calibrated by experiments.
+name: Default
+description: Balanced world with moderate resources. Rule-based agents unless an LLM provider is selected.
+
+simulation:
+  ticks_per_day: 24
+  max_agents: 20
+  population: 5
+  random_seed: 42
+  decision_timeout_seconds: 20
+  fallback_on_timeout: true
+
+world:
+  width: 100
+  height: 100
+  workplaces: 2
+  food_sources: 2
+  rest_areas: 2
+  gathering_areas: 1
+  workplace_capacity: 6
+  food_stock_per_source: 40
+  food_restock_per_day: 40
+
+resources:
+  starting_tokens: 20
+  starting_energy: 100
+  starting_health: 100
+  maximum_energy: 100
+  maximum_health: 100
+  food_price: 3
+  food_nutrition: 30
+  hunger_increase_per_tick: 4
+
+work:
+  base_wage_per_tick: 5
+  energy_cost_per_tick: 15
+  safe_workload: 1.0
+  health_penalty_rate: 2
+
+capacity:
+  actions_per_tick: 1
+  max_message_tokens: 100
+  max_outgoing_messages_per_tick: 3
+  max_incoming_messages_processed_per_tick: 5
+  attention_budget_per_tick: 10
+  context_token_budget: 6000
+
+communication:
+  base_token_cost: 0.1
+  token_cost_per_message_token: 0.001
+  distance_cost_per_unit: 0.01
+  interference_cost: 0.01
+  base_processing_time: 0.05
+  sender_energy_per_token: 0.001
+  receiver_energy_per_token: 0.001
+  minimum_bandwidth: 1
+
+trust:
+  prior_alpha: 2
+  prior_beta: 2
+  maximum_evidence_weight: 1.0
+  enable_time_decay: false
+
+personality:
+  initial_default: 0.5
+  learning_rate: 0.02
+  maximum_change_per_event: 0.02
+
+existential_goal:
+  base_probability: 0.02
+  spirituality_coefficient: 0.12
+  novelty_coefficient: 0.05
+  stress_coefficient: 0.06
+  social_discussion_coefficient: 0.08
+  free_time_coefficient: 0.05
+  overload_coefficient: 0.08
+  minimum_probability: 0.005
+  maximum_probability: 0.30
+
+llm:
+  provider: none
+  model: claude-opus-5-5
+  effort: low
+  max_output_tokens: 800
+  max_concurrent_requests: 5
+  max_retries: 1
+  maximum_world_spend: 5.0
+  maximum_agent_daily_spend: 0.5

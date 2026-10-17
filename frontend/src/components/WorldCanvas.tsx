@@ -19,6 +19,7 @@ const SPEECH_MS = 4500;
 const THOUGHT_MS = 3000;
 // At most this many intention bubbles at once (the selected agent always gets one).
 const MAX_THOUGHTS = 3;
+const CROWDED_AGENTS = 40;
 
 interface AgentSprite {
   root: Container;
@@ -277,6 +278,10 @@ class Scene {
       g.rect(-9, -14, (18 * Math.max(0, a.health)) / 100, 3).fill({ color: a.health > 50 ? 0x51cf66 : a.health > 25 ? 0xfcc419 : 0xff6b6b });
     }
     s.label.alpha = a.alive ? 1 : 0.5;
+    // Crowded maps: only the selected agent keeps its labels.
+    const crowded = (this.world?.agents.length ?? 0) > CROWDED_AGENTS;
+    s.label.visible = !crowded || selected;
+    s.action.visible = !crowded || selected;
     s.action.text = a.alive ? (a.traveling ? `→ ${a.action}` : a.action) : 'dead';
     s.root.zIndex = selected ? 10 : 0;
   }

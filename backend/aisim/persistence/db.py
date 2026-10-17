@@ -16,7 +16,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 DEFAULT_URL = "sqlite:///./aisim.db"
-BACKEND_DIR = Path(__file__).resolve().parents[2]
+# Shipped inside the package so installed (non-editable) deployments can migrate.
+MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 
 
 def database_url() -> str:
@@ -62,8 +63,8 @@ class Database:
         from alembic import command
         from alembic.config import Config
 
-        cfg = Config(str(BACKEND_DIR / "alembic.ini"))
-        cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+        cfg = Config()
+        cfg.set_main_option("script_location", str(MIGRATIONS_DIR))
         cfg.set_main_option("sqlalchemy.url", self.url.replace("%", "%%"))
         cfg.attributes["connection_engine"] = self.engine
         command.upgrade(cfg, "head")

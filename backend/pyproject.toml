@@ -27,6 +27,7 @@ include = ["aisim*"]
 
 [tool.setuptools.package-data]
 "aisim.config" = ["presets/*.yaml"]
+"aisim.persistence" = ["migrations/*.py", "migrations/*.mako", "migrations/versions/*.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

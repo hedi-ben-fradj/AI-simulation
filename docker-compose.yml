@@ -1,0 +1,41 @@
+# Local stack: PostgreSQL + backend API + frontend (nginx).
+#   ANTHROPIC_API_KEY=sk-... docker compose up --build
+# Then open http://localhost:8080
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: aisim
+      POSTGRES_PASSWORD: aisim
+      POSTGRES_DB: aisim
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aisim"]
+      interval: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://aisim:aisim@db:5432/aisim
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AISIM_AUTO_RESUME: ${AISIM_AUTO_RESUME:-false}
+      AISIM_API_TOKEN: ${AISIM_API_TOKEN:-}
+      AISIM_CORS_ORIGINS: http://localhost:8080
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  pgdata:
